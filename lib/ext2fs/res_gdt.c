@@ -64,7 +64,6 @@ errcode_t ext2fs_create_resize_inode(ext2_filsys fs)
 	struct ext2_super_block	*sb;
 	struct ext2_inode	inode;
 	__u32			*dindir_buf, *gdt_buf;
-	int			rsv_add;
 	unsigned long long	apb, inode_size;
 	blk_t			dindir_blk, rsv_off, gdt_off, gdt_blk;
 	int			dindir_dirty = 0, inode_dirty = 0;
@@ -84,7 +83,6 @@ errcode_t ext2fs_create_resize_inode(ext2_filsys fs)
 
 	/* Maximum possible file size (we donly use the dindirect blocks) */
 	apb = EXT2_ADDR_PER_BLOCK(sb);
-	rsv_add = fs->blocksize / 512;
 	if ((dindir_blk = inode.i_block[EXT2_DIND_BLOCK])) {
 #ifdef RES_GDT_DEBUG
 		printf("reading GDT dindir %u\n", dindir_blk);
@@ -93,8 +91,9 @@ errcode_t ext2fs_create_resize_inode(ext2_filsys fs)
 		if (retval)
 			goto out_inode;
 	} else {
-		blk_t goal = 3 + sb->s_reserved_gdt_blocks +
-			fs->desc_blocks + fs->inode_blocks_per_group;
+		blk_t goal = sb->s_first_data_block + fs->desc_blocks +
+			sb->s_reserved_gdt_blocks + 2 +
+			fs->inode_blocks_per_group;
 
 		retval = ext2fs_alloc_block(fs, goal, 0, &dindir_blk);
 		if (retval)
@@ -102,7 +101,7 @@ errcode_t ext2fs_create_resize_inode(ext2_filsys fs)
 		inode.i_mode = LINUX_S_IFREG | 0600;
 		inode.i_links_count = 1;
 		inode.i_block[EXT2_DIND_BLOCK] = dindir_blk;
-		inode.i_blocks = rsv_add;
+		ext2fs_iblk_set(fs, &inode, 1);
 		memset(dindir_buf, 0, fs->blocksize);
 #ifdef RES_GDT_DEBUG
 		printf("allocated GDT dindir %u\n", dindir_blk);
@@ -143,7 +142,7 @@ errcode_t ext2fs_create_resize_inode(ext2_filsys fs)
 			gdt_dirty = dindir_dirty = inode_dirty = 1;
 			memset(gdt_buf, 0, fs->blocksize);
 			dindir_buf[gdt_off] = gdt_blk;
-			inode.i_blocks += rsv_add;
+			ext2fs_iblk_add_blocks(fs, &inode, 1);
 #ifdef RES_GDT_DEBUG
 			printf("added primary GDT block %u at %u[%u]\n",
 			       gdt_blk, dindir_blk, gdt_off);
@@ -174,7 +173,7 @@ errcode_t ext2fs_create_resize_inode(ext2_filsys fs)
 				       expect, grp, gdt_blk, last);
 #endif
 				gdt_buf[last] = expect;
-				inode.i_blocks += rsv_add;
+				ext2fs_iblk_add_blocks(fs, &inode, 1);
 				gdt_dirty = inode_dirty = 1;
 			} else if (gdt_buf[last] != expect) {
 #ifdef RES_GDT_DEBUG
@@ -209,7 +208,7 @@ out_inode:
 #endif
 	if (inode_dirty) {
 		inode.i_atime = inode.i_mtime = fs->now ? fs->now : time(0);
-		retval2 = ext2fs_write_inode(fs, EXT2_RESIZE_INO, &inode);
+		retval2 = ext2fs_write_new_inode(fs, EXT2_RESIZE_INO, &inode);
 		if (!retval)
 			retval = retval2;
 	}

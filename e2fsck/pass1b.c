@@ -4,7 +4,7 @@
  * This file contains pass1B, pass1C, and pass1D of e2fsck.  They are
  * only invoked if pass 1 discovered blocks which are in use by more
  * than one inode.
- * 
+ *
  * Pass1B scans the data blocks of all the inodes again, generating a
  * complete list of duplicate blocks and which inodes have claimed
  * them.
@@ -17,14 +17,14 @@
  * blocks, the user is prompted if s/he would like to clone the file
  * (so that the file gets a fresh copy of the duplicated blocks) or
  * simply to delete the file.
- * 
+ *
  * Copyright (C) 1993, 1994, 1995, 1996, 1997 Theodore Ts'o.
  *
  * %Begin-Header%
  * This file may be redistributed under the terms of the GNU Public
  * License.
  * %End-Header%
- * 
+ *
  */
 
 #include <time.h>
@@ -83,7 +83,7 @@ struct dup_inode {
 };
 
 static int process_pass1b_block(ext2_filsys fs, blk_t	*blocknr,
-				e2_blkcnt_t blockcnt, blk_t ref_blk, 
+				e2_blkcnt_t blockcnt, blk_t ref_blk,
 				int ref_offset, void *priv_data);
 static void delete_file(e2fsck_t ctx, ext2_ino_t ino,
 			struct dup_inode *dp, char *block_buf);
@@ -169,7 +169,7 @@ static void add_dupe(e2fsck_t ctx, ext2_ino_t ino, blk_t blk,
 /*
  * Free a duplicate inode record
  */
-static void inode_dnode_free(dnode_t *node, 
+static void inode_dnode_free(dnode_t *node,
 			     void *context EXT2FS_ATTR((unused)))
 {
 	struct dup_inode	*di;
@@ -180,13 +180,14 @@ static void inode_dnode_free(dnode_t *node,
 		next = p->next;
 		free(p);
 	}
+	free(di);
 	free(node);
 }
 
 /*
  * Free a duplicate block record
  */
-static void block_dnode_free(dnode_t *node, 
+static void block_dnode_free(dnode_t *node,
 			     void *context EXT2FS_ATTR((unused)))
 {
 	struct dup_block	*db;
@@ -197,6 +198,7 @@ static void block_dnode_free(dnode_t *node,
 		next = p->next;
 		free(p);
 	}
+	free(db);
 	free(node);
 }
 
@@ -208,9 +210,12 @@ void e2fsck_pass1_dupblocks(e2fsck_t ctx, char *block_buf)
 {
 	ext2_filsys 		fs = ctx->fs;
 	struct problem_context	pctx;
+#ifdef RESOURCE_TRACK
+	struct resource_track	rtrack;
+#endif
 
 	clear_problem_context(&pctx);
-	
+
 	pctx.errcode = ext2fs_allocate_inode_bitmap(fs,
 		      _("multiply claimed inode map"), &inode_dup_map);
 	if (pctx.errcode) {
@@ -223,10 +228,18 @@ void e2fsck_pass1_dupblocks(e2fsck_t ctx, char *block_buf)
 	dict_init(&blk_dict, DICTCOUNT_T_MAX, dict_int_cmp);
 	dict_set_allocator(&ino_dict, NULL, inode_dnode_free, NULL);
 	dict_set_allocator(&blk_dict, NULL, block_dnode_free, NULL);
-	
+
+	init_resource_track(&rtrack, ctx->fs->io);
 	pass1b(ctx, block_buf);
+	print_resource_track(ctx, "Pass 1b", &rtrack, ctx->fs->io);
+
+	init_resource_track(&rtrack, ctx->fs->io);
 	pass1c(ctx, block_buf);
+	print_resource_track(ctx, "Pass 1c", &rtrack, ctx->fs->io);
+
+	init_resource_track(&rtrack, ctx->fs->io);
 	pass1d(ctx, block_buf);
+	print_resource_track(ctx, "Pass 1d", &rtrack, ctx->fs->io);
 
 	/*
 	 * Time to free all of the accumulated data structures that we
@@ -234,6 +247,7 @@ void e2fsck_pass1_dupblocks(e2fsck_t ctx, char *block_buf)
 	 */
 	dict_free_nodes(&ino_dict);
 	dict_free_nodes(&blk_dict);
+	ext2fs_free_inode_bitmap(inode_dup_map);
 }
 
 /*
@@ -255,9 +269,9 @@ static void pass1b(e2fsck_t ctx, char *block_buf)
 	ext2_inode_scan	scan;
 	struct process_block_struct pb;
 	struct problem_context pctx;
-	
+
 	clear_problem_context(&pctx);
-	
+
 	if (!(ctx->options & E2F_OPT_PREEN))
 		fix_problem(ctx, PR_1B_PASS_HEADER, &pctx);
 	pctx.errcode = ext2fs_open_inode_scan(fs, ctx->inode_buffer_blocks,
@@ -294,7 +308,8 @@ static void pass1b(e2fsck_t ctx, char *block_buf)
 		if (ext2fs_inode_has_valid_blocks(&inode) ||
 		    (ino == EXT2_BAD_INO))
 			pctx.errcode = ext2fs_block_iterate2(fs, ino,
-				     0, block_buf, process_pass1b_block, &pb);
+					     BLOCK_FLAG_READ_ONLY, block_buf,
+					     process_pass1b_block, &pb);
 		if (inode.i_file_acl)
 			process_pass1b_block(fs, &inode.i_file_acl,
 					     BLOCK_COUNT_EXTATTR, 0, 0, &pb);
@@ -314,7 +329,7 @@ static void pass1b(e2fsck_t ctx, char *block_buf)
 static int process_pass1b_block(ext2_filsys fs EXT2FS_ATTR((unused)),
 				blk_t	*block_nr,
 				e2_blkcnt_t blockcnt EXT2FS_ATTR((unused)),
-				blk_t ref_blk EXT2FS_ATTR((unused)), 
+				blk_t ref_blk EXT2FS_ATTR((unused)),
 				int ref_offset EXT2FS_ATTR((unused)),
 				void *priv_data)
 {
@@ -325,10 +340,10 @@ static int process_pass1b_block(ext2_filsys fs EXT2FS_ATTR((unused)),
 		return 0;
 	p = (struct process_block_struct *) priv_data;
 	ctx = p->ctx;
-	
+
 	if (!ext2fs_test_block_bitmap(ctx->block_dup_map, *block_nr))
 		return 0;
-	
+
 	/* OK, this is a duplicate block */
 	if (p->ino != EXT2_BAD_INO) {
 		p->pctx->blk = *block_nr;
@@ -338,7 +353,7 @@ static int process_pass1b_block(ext2_filsys fs EXT2FS_ATTR((unused)),
 	ext2fs_mark_inode_bitmap(inode_dup_map, p->ino);
 
 	add_dupe(ctx, p->ino, *block_nr, p->inode);
-	
+
 	return 0;
 }
 
@@ -355,9 +370,9 @@ struct search_dir_struct {
 
 static int search_dirent_proc(ext2_ino_t dir, int entry,
 			      struct ext2_dir_entry *dirent,
-			      int offset EXT2FS_ATTR((unused)), 
+			      int offset EXT2FS_ATTR((unused)),
 			      int blocksize EXT2FS_ATTR((unused)),
-			      char *buf EXT2FS_ATTR((unused)), 
+			      char *buf EXT2FS_ATTR((unused)),
 			      void *priv_data)
 {
 	struct search_dir_struct *sd;
@@ -368,7 +383,7 @@ static int search_dirent_proc(ext2_ino_t dir, int entry,
 
 	if (dirent->inode > sd->max_inode)
 		/* Should abort this inode, but not everything */
-		return 0;	
+		return 0;
 
 	if ((dirent->inode < sd->first_inode) || (entry < DIRENT_OTHER_FILE) ||
 	    !ext2fs_test_inode_bitmap(inode_dup_map, dirent->inode))
@@ -407,7 +422,7 @@ static void pass1c(e2fsck_t ctx, char *block_buf)
 	sd.max_inode = fs->super->s_inodes_count;
 	ext2fs_dblist_dir_iterate(fs->dblist, 0, block_buf,
 				  search_dirent_proc, &sd);
-}	
+}
 
 static void pass1d(e2fsck_t ctx, char *block_buf)
 {
@@ -423,9 +438,9 @@ static void pass1d(e2fsck_t ctx, char *block_buf)
 	dnode_t	*n, *m;
 	struct block_el	*s;
 	struct inode_el *r;
-	
+
 	clear_problem_context(&pctx);
-	
+
 	if (!(ctx->options & E2F_OPT_PREEN))
 		fix_problem(ctx, PR_1D_PASS_HEADER, &pctx);
 	e2fsck_read_bitmaps(ctx);
@@ -460,7 +475,7 @@ static void pass1d(e2fsck_t ctx, char *block_buf)
 				file_ok = 0;
 				meta_data = 1;
 			}
-			
+
 			/*
 			 * Add all inodes used by this block to the
 			 * shared[] --- which is a unique list, so
@@ -490,10 +505,10 @@ static void pass1d(e2fsck_t ctx, char *block_buf)
 		fix_problem(ctx, PR_1D_DUP_FILE, &pctx);
 		pctx.blkcount = 0;
 		pctx.num = 0;
-		
+
 		if (meta_data)
 			fix_problem(ctx, PR_1D_SHARE_METADATA, &pctx);
-		
+
 		for (i = 0; i < shared_len; i++) {
 			m = dict_lookup(&ino_dict, INT_TO_VOIDPTR(shared[i]));
 			if (!m)
@@ -569,10 +584,10 @@ static int delete_file_block(ext2_filsys fs,
 		ext2fs_unmark_block_bitmap(ctx->block_found_map, *block_nr);
 		ext2fs_block_alloc_stats(fs, *block_nr, -1);
 	}
-		
+
 	return 0;
 }
-		
+
 static void delete_file(e2fsck_t ctx, ext2_ino_t ino,
 			struct dup_inode *dp, char* block_buf)
 {
@@ -590,20 +605,17 @@ static void delete_file(e2fsck_t ctx, ext2_ino_t ino,
 
 	e2fsck_read_inode(ctx, ino, &inode, "delete_file");
 	if (ext2fs_inode_has_valid_blocks(&inode))
-		pctx.errcode = ext2fs_block_iterate2(fs, ino, 0, block_buf,
-						     delete_file_block, &pb);
+		pctx.errcode = ext2fs_block_iterate2(fs, ino, BLOCK_FLAG_READ_ONLY,
+						     block_buf, delete_file_block, &pb);
 	if (pctx.errcode)
 		fix_problem(ctx, PR_1B_BLOCK_ITERATE, &pctx);
-	ext2fs_unmark_inode_bitmap(ctx->inode_used_map, ino);
-	ext2fs_unmark_inode_bitmap(ctx->inode_dir_map, ino);
 	if (ctx->inode_bad_map)
 		ext2fs_unmark_inode_bitmap(ctx->inode_bad_map, ino);
 	ext2fs_inode_alloc_stats2(fs, ino, -1, LINUX_S_ISDIR(inode.i_mode));
 
 	/* Inode may have changed by block_iterate, so reread it */
 	e2fsck_read_inode(ctx, ino, &inode, "delete_file");
-	inode.i_links_count = 0;
-	inode.i_dtime = ctx->now;
+	e2fsck_clear_inode(ctx, ino, &inode, 0, "delete_file");
 	if (inode.i_file_acl &&
 	    (fs->super->s_feature_compat & EXT2_FEATURE_COMPAT_EXT_ATTR)) {
 		count = 1;
@@ -625,11 +637,10 @@ static void delete_file(e2fsck_t ctx, ext2_ino_t ino,
 		 */
 		if ((count == 0) ||
 		    ext2fs_test_block_bitmap(ctx->block_dup_map,
-					     inode.i_file_acl)) 
+					     inode.i_file_acl))
 			delete_file_block(fs, &inode.i_file_acl,
 					  BLOCK_COUNT_EXTATTR, 0, 0, &pb);
 	}
-	e2fsck_write_inode(ctx, ino, &inode, "delete_file");
 }
 
 struct clone_struct {
@@ -654,7 +665,7 @@ static int clone_file_block(ext2_filsys fs,
 	e2fsck_t ctx;
 
 	ctx = cs->ctx;
-	
+
 	if (HOLE_BLKADDR(*block_nr))
 		return 0;
 
@@ -705,7 +716,7 @@ static int clone_file_block(ext2_filsys fs,
 	}
 	return 0;
 }
-		
+
 static int clone_file(e2fsck_t ctx, ext2_ino_t ino,
 		      struct dup_inode *dp, char* block_buf)
 {
@@ -761,7 +772,7 @@ static int clone_file(e2fsck_t ctx, ext2_ino_t ino,
 		 */
 		n = dict_lookup(&blk_dict, INT_TO_VOIDPTR(blk));
 		if (!n) {
-			com_err("clone_file", 0, 
+			com_err("clone_file", 0,
 				_("internal error: couldn't lookup EA "
 				  "block record for %u"), blk);
 			retval = 0; /* OK to stumble on... */
@@ -773,9 +784,9 @@ static int clone_file(e2fsck_t ctx, ext2_ino_t ino,
 				continue;
 			n = dict_lookup(&ino_dict, INT_TO_VOIDPTR(ino_el->inode));
 			if (!n) {
-				com_err("clone_file", 0, 
+				com_err("clone_file", 0,
 					_("internal error: couldn't lookup EA "
-					  "inode record for %u"), 
+					  "inode record for %u"),
 					ino_el->inode);
 				retval = 0; /* OK to stumble on... */
 				goto errout;
@@ -804,7 +815,7 @@ static int check_if_fs_block(e2fsck_t ctx, blk_t test_block)
 	ext2_filsys fs = ctx->fs;
 	blk_t	first_block;
 	dgrp_t	i;
-	
+
 	first_block = fs->super->s_first_data_block;
 	for (i = 0; i < fs->group_desc_count; i++) {
 
@@ -814,7 +825,7 @@ static int check_if_fs_block(e2fsck_t ctx, blk_t test_block)
 			    (test_block <= first_block + fs->desc_blocks))
 				return 1;
 		}
-		
+
 		/* Check the inode table */
 		if ((fs->group_desc[i].bg_inode_table) &&
 		    (test_block >= fs->group_desc[i].bg_inode_table) &&
@@ -826,7 +837,7 @@ static int check_if_fs_block(e2fsck_t ctx, blk_t test_block)
 		if ((test_block == fs->group_desc[i].bg_block_bitmap) ||
 		    (test_block == fs->group_desc[i].bg_inode_bitmap))
 			return 1;
-		
+
 		first_block += fs->super->s_blocks_per_group;
 	}
 	return 0;

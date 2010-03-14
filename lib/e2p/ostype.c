@@ -11,11 +11,11 @@
 #include <string.h>
 #include <stdlib.h>
 
-const char *os_tab[] =
-	{ "Linux", 
-	  "Hurd", 
-	  "Masix", 
-	  "FreeBSD", 
+static const char *os_tab[] =
+	{ "Linux",
+	  "Hurd",
+	  "Masix",
+	  "FreeBSD",
 	  "Lites",
 	  0 };
 

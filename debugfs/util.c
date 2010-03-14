@@ -1,12 +1,12 @@
 /*
  * util.c --- utilities for the debugfs program
- * 
+ *
  * Copyright (C) 1993, 1994 Theodore Ts'o.  This file may be
  * redistributed under the terms of the GNU Public License.
  *
  */
 
-#define _XOPEN_SOURCE /* needed for strptime */
+#define _XOPEN_SOURCE 600 /* needed for strptime */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -17,7 +17,7 @@
 #include <signal.h>
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
-#else 
+#else
 extern int optind;
 extern char *optarg;
 #endif
@@ -40,7 +40,7 @@ extern int optreset;		/* defined by BSD, but not others */
  * affairs is that BSD-derived versions of getopt() misbehave if
  * optind is set to 0 in order to reset getopt(), and glibc's getopt()
  * will core dump if optind is set 1 in order to reset getopt().
- * 
+ *
  * More modern versions of BSD require that optreset be set to 1 in
  * order to reset getopt().   Sigh.  Standards, anyone?
  *
@@ -82,11 +82,13 @@ FILE *open_pager(void)
 	char buf[80];
 
 	signal(SIGPIPE, SIG_IGN);
+	if (!isatty(1))
+		return stdout;
 	if (!pager)
 		pager = getenv("PAGER");
 	if (!pager)
 		pager = find_pager(buf);
-	if (!pager || 
+	if (!pager ||
 	    (strcmp(pager, "__none__") == 0) ||
 	    ((outfile = popen(pager, "w")) == 0))
 		return stdout;
@@ -121,7 +123,7 @@ ext2_ino_t string_to_inode(char *str)
 
 	retval = ext2fs_namei(current_fs, root, cwd, str, &ino);
 	if (retval) {
-		com_err(str, retval, "");
+		com_err(str, retval, 0);
 		return 0;
 	}
 	return ino;
@@ -190,7 +192,7 @@ char *time_to_string(__u32 cl)
 {
 	static int	do_gmt = -1;
 	time_t		t = (time_t) cl;
-	char *		tz;
+	const char	*tz;
 
 	if (do_gmt == -1) {
 		/* The diet libc doesn't respect the TZ environemnt variable */
@@ -229,6 +231,7 @@ extern time_t string_to_time(const char *arg)
 	    ts.tm_min > 59 || ts.tm_sec > 61)
 		ts.tm_mday = 0;
 #endif
+	ts.tm_isdst = -1;
 	ret = mktime(&ts);
 	if (ts.tm_mday == 0 || ret == ((time_t) -1)) {
 		/* Try it as an integer... */
@@ -248,7 +251,7 @@ unsigned long parse_ulong(const char *str, const char *cmd,
 {
 	char		*tmp;
 	unsigned long	ret;
-	
+
 	ret = strtoul(str, &tmp, 0);
 	if (*tmp == 0) {
 		if (err)
@@ -274,10 +277,8 @@ int strtoblk(const char *cmd, const char *str, blk_t *ret)
 
 	blk = parse_ulong(str, cmd, "block number", &err);
 	*ret = blk;
-	if (err == 0 && blk == 0) {
-		com_err(cmd, 0, "Invalid block number 0");
-		err = 1;
-	}
+	if (err)
+		com_err(cmd, 0, "Invalid block number: %s", str);
 	return err;
 }
 
@@ -316,9 +317,9 @@ int common_inode_args_process(int argc, char *argv[],
 {
 	if (common_args_process(argc, argv, 2, 2, argv[0], "<file>", flags))
 		return 1;
-	
+
 	*inode = string_to_inode(argv[1]);
-	if (!*inode) 
+	if (!*inode)
 		return 1;
 	return 0;
 }
@@ -337,6 +338,11 @@ int common_block_args_process(int argc, char *argv[],
 
 	if (strtoblk(argv[0], argv[1], block))
 		return 1;
+	if (*block == 0) {
+		com_err(argv[0], 0, "Invalid block number 0");
+		err = 1;
+	}
+
 	if (argc > 2) {
 		*count = parse_ulong(argv[2], argv[0], "count", &err);
 		if (err)

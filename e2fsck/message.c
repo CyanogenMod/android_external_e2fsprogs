@@ -14,7 +14,7 @@
  * The following % expansions are supported:
  *
  * 	%b	<blk>			block number
- * 	%B	<blkcount>		integer
+ * 	%B	<blkcount>		interpret blkcount as blkcount
  * 	%c	<blk2>			block number
  * 	%Di	<dirent>->ino		inode number
  * 	%Dn	<dirent>->name		string
@@ -46,6 +46,7 @@
  * 	%q	ext2fs_get_pathname of directory <dir>
  * 	%Q	ext2fs_get_pathname of directory <ino> with <dir> as
  * 			the containing directory.
+ * 	%r	<blkcount>		interpret blkcount as refcount
  * 	%s	<str>			miscellaneous string
  * 	%S	backup superblock
  * 	%X	<num> hexadecimal format
@@ -76,10 +77,11 @@
  * 	@o	orphaned
  * 	@p	problem in
  * 	@r	root inode
- * 	@s	should be 
+ * 	@s	should be
  * 	@S	superblock
  * 	@u	unattached
  * 	@v	device
+ *	@x	extent
  * 	@z	zero-length
  */
 
@@ -134,6 +136,7 @@ static const char *abbrevs[] = {
 	N_("Ssuper@b"),
 	N_("uunattached"),
 	N_("vdevice"),
+	N_("xextent"),
 	N_("zzero-length"),
 	"@@",
 	0
@@ -197,7 +200,7 @@ static void print_pathname(ext2_filsys fs, ext2_ino_t dir, ext2_ino_t ino)
 		fputs(_(special_inode_name[ino]), stdout);
 		return;
 	}
-	
+
 	retval = ext2fs_get_pathname(fs, dir, ino, &path);
 	if (retval)
 		fputs("???", stdout);
@@ -207,17 +210,35 @@ static void print_pathname(ext2_filsys fs, ext2_ino_t dir, ext2_ino_t ino)
 	}
 }
 
+static void print_time(time_t t)
+{
+	const char *		time_str;
+	static int		do_gmt = -1;
+
+#ifdef __dietlibc__
+		/* The diet libc doesn't respect the TZ environemnt variable */
+		if (do_gmt == -1) {
+			time_str = getenv("TZ");
+			if (!time_str)
+				time_str = "";
+			do_gmt = !strcmp(time_str, "GMT0");
+		}
+#endif
+		time_str = asctime((do_gmt > 0) ? gmtime(&t) : localtime(&t));
+		printf("%.24s", time_str);
+}
+
 /*
  * This function handles the '@' expansion.  We allow recursive
  * expansion; an @ expression can contain further '@' and '%'
- * expressions. 
+ * expressions.
  */
 static _INLINE_ void expand_at_expression(e2fsck_t ctx, char ch,
 					  struct problem_context *pctx,
 					  int *first, int recurse)
 {
 	const char **cpp, *str;
-	
+
 	/* Search for the abbreviation */
 	for (cpp = abbrevs; *cpp; cpp++) {
 		if (ch == *cpp[0])
@@ -237,18 +258,16 @@ static _INLINE_ void expand_at_expression(e2fsck_t ctx, char ch,
 /*
  * This function expands '%IX' expressions
  */
-static _INLINE_ void expand_inode_expression(char ch, 
+static _INLINE_ void expand_inode_expression(ext2_filsys fs, char ch,
 					     struct problem_context *ctx)
 {
 	struct ext2_inode	*inode;
 	struct ext2_inode_large	*large_inode;
-	const char *		time_str;
 	time_t			t;
-	int			do_gmt = -1;
 
 	if (!ctx || !ctx->inode)
 		goto no_inode;
-	
+
 	inode = ctx->inode;
 	large_inode = (struct ext2_inode_large *) inode;
 
@@ -273,7 +292,13 @@ static _INLINE_ void expand_inode_expression(char ch,
 		printf("%u", large_inode->i_extra_isize);
 		break;
 	case 'b':
-		printf("%u", inode->i_blocks);
+		if (fs->super->s_feature_ro_compat &
+		    EXT4_FEATURE_RO_COMPAT_HUGE_FILE) 
+			printf("%llu", inode->i_blocks +
+			       (((long long) inode->osd2.linux2.l_i_blocks_hi)
+				<< 32));
+		else
+			printf("%u", inode->i_blocks);
 		break;
 	case 'l':
 		printf("%d", inode->i_links_count);
@@ -282,16 +307,7 @@ static _INLINE_ void expand_inode_expression(char ch,
 		printf("0%o", inode->i_mode);
 		break;
 	case 'M':
-		/* The diet libc doesn't respect the TZ environemnt variable */
-		if (do_gmt == -1) {
-			time_str = getenv("TZ");
-			if (!time_str)
-				time_str = "";
-			do_gmt = !strcmp(time_str, "GMT");
-		}
-		t = inode->i_mtime;
-		time_str = asctime(do_gmt ? gmtime(&t) : localtime(&t));
-		printf("%.24s", time_str);
+		print_time(inode->i_mtime);
 		break;
 	case 'F':
 		printf("%u", inode->i_faddr);
@@ -310,17 +326,17 @@ static _INLINE_ void expand_inode_expression(char ch,
 		printf("%d", inode_gid(*inode));
 		break;
 	case 't':
-		if (LINUX_S_ISREG(inode->i_mode)) 
+		if (LINUX_S_ISREG(inode->i_mode))
 			printf(_("regular file"));
-		else if (LINUX_S_ISDIR(inode->i_mode)) 
+		else if (LINUX_S_ISDIR(inode->i_mode))
 			printf(_("directory"));
-		else if (LINUX_S_ISCHR(inode->i_mode)) 
+		else if (LINUX_S_ISCHR(inode->i_mode))
 			printf(_("character device"));
-		else if (LINUX_S_ISBLK(inode->i_mode)) 
+		else if (LINUX_S_ISBLK(inode->i_mode))
 			printf(_("block device"));
-		else if (LINUX_S_ISFIFO(inode->i_mode)) 
+		else if (LINUX_S_ISFIFO(inode->i_mode))
 			printf(_("named pipe"));
-		else if (LINUX_S_ISLNK(inode->i_mode)) 
+		else if (LINUX_S_ISLNK(inode->i_mode))
 			printf(_("symbolic link"));
 		else if (LINUX_S_ISSOCK(inode->i_mode))
 			printf(_("socket"));
@@ -338,17 +354,18 @@ static _INLINE_ void expand_inode_expression(char ch,
 /*
  * This function expands '%dX' expressions
  */
-static _INLINE_ void expand_dirent_expression(char ch,
+static _INLINE_ void expand_dirent_expression(ext2_filsys fs, char ch,
 					      struct problem_context *ctx)
 {
 	struct ext2_dir_entry	*dirent;
+	unsigned int rec_len;
 	int	len;
-	
+
 	if (!ctx || !ctx->dirent)
 		goto no_dirent;
-	
+
 	dirent = ctx->dirent;
-	
+
 	switch (ch) {
 	case 'i':
 		printf("%u", dirent->inode);
@@ -357,12 +374,14 @@ static _INLINE_ void expand_dirent_expression(char ch,
 		len = dirent->name_len & 0xFF;
 		if (len > EXT2_NAME_LEN)
 			len = EXT2_NAME_LEN;
-		if (len > dirent->rec_len)
-			len = dirent->rec_len;
+		if ((ext2fs_get_rec_len(fs, dirent, &rec_len) == 0) &&
+		    (len > rec_len))
+			len = rec_len;
 		safe_print(dirent->name, len);
 		break;
 	case 'r':
-		printf("%u", dirent->rec_len);
+		(void) ext2fs_get_rec_len(fs, dirent, &rec_len);
+		printf("%u", rec_len);
 		break;
 	case 'l':
 		printf("%u", dirent->name_len & 0xFF);
@@ -378,27 +397,54 @@ static _INLINE_ void expand_dirent_expression(char ch,
 }
 
 static _INLINE_ void expand_percent_expression(ext2_filsys fs, char ch,
+					       int *first,
 					       struct problem_context *ctx)
 {
+	e2fsck_t e2fsck_ctx = fs ? (e2fsck_t) fs->priv_data : NULL;
+	const char *m;
+
 	if (!ctx)
 		goto no_context;
-	
+
 	switch (ch) {
 	case '%':
 		fputc('%', stdout);
 		break;
 	case 'b':
-		printf("%u", ctx->blk);
-		break;
-	case 'B':
 #ifdef EXT2_NO_64_TYPE
-		printf("%d", ctx->blkcount);
+		printf("%u", (unsigned long) ctx->blk);
 #else
-		printf("%lld", (long long)ctx->blkcount);
+		printf("%llu", (unsigned long long) ctx->blk);
 #endif
 		break;
+	case 'B':
+		if (ctx->blkcount == BLOCK_COUNT_IND)
+			m = _("indirect block");
+		else if (ctx->blkcount == BLOCK_COUNT_DIND)
+			m = _("double indirect block");
+		else if (ctx->blkcount == BLOCK_COUNT_TIND)
+			m = _("triple indirect block");
+		else if (ctx->blkcount == BLOCK_COUNT_TRANSLATOR)
+			m = _("translator block");
+		else
+			m = _("block #");
+		if (*first && islower(m[0]))
+			fputc(toupper(*m++), stdout);
+		fputs(m, stdout);
+		if (ctx->blkcount >= 0) {
+#ifdef EXT2_NO_64_TYPE
+			printf("%d", ctx->blkcount);
+#else
+			printf("%lld", (long long) ctx->blkcount);
+#endif
+		}
+		break;
 	case 'c':
-		printf("%u", ctx->blk2);
+#ifdef EXT2_NO_64_TYPE
+		printf("%u", (unsigned long) ctx->blk2);
+#else
+		printf("%llu", (unsigned long long) ctx->blk2);
+#endif
 		break;
 	case 'd':
 		printf("%u", ctx->dir);
@@ -435,11 +481,24 @@ static _INLINE_ void expand_percent_expression(ext2_filsys fs, char ch,
 	case 'Q':
 		print_pathname(fs, ctx->dir, ctx->ino);
 		break;
+	case 'r':
+#ifdef EXT2_NO_64_TYPE
+		printf("%d", ctx->blkcount);
+#else
+		printf("%lld", (long long) ctx->blkcount);
+#endif
+		break;
 	case 'S':
 		printf("%u", get_backup_sb(NULL, fs, NULL, NULL));
 		break;
 	case 's':
 		printf("%s", ctx->str ? ctx->str : "NULL");
+		break;
+	case 't':
+		print_time((time_t) ctx->num);
+		break;
+	case 'T':
+		print_time(e2fsck_ctx ? e2fsck_ctx->now : time(0));
 		break;
 	case 'X':
 #ifdef EXT2_NO_64_TYPE
@@ -453,7 +512,7 @@ static _INLINE_ void expand_percent_expression(ext2_filsys fs, char ch,
 		printf("%%%c", ch);
 		break;
 	}
-}	
+}
 
 void print_e2fsck_message(e2fsck_t ctx, const char *msg,
 			  struct problem_context *pctx, int first,
@@ -470,13 +529,13 @@ void print_e2fsck_message(e2fsck_t ctx, const char *msg,
 			expand_at_expression(ctx, *cp, pctx, &first, recurse);
 		} else if (cp[0] == '%' && cp[1] == 'I') {
 			cp += 2;
-			expand_inode_expression(*cp, pctx);
+			expand_inode_expression(fs, *cp, pctx);
 		} else if (cp[0] == '%' && cp[1] == 'D') {
 			cp += 2;
-			expand_dirent_expression(*cp, pctx);
+			expand_dirent_expression(fs, *cp, pctx);
 		} else if ((cp[0] == '%')) {
 			cp++;
-			expand_percent_expression(fs, *cp, pctx);
+			expand_percent_expression(fs, *cp, &first, pctx);
 		} else {
 			for (i=0; cp[i]; i++)
 				if ((cp[i] == '@') || cp[i] == '%')

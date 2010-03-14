@@ -10,6 +10,8 @@
  * %End-Header%
  */
 
+#define _XOPEN_SOURCE 600 /* for inclusion of strtoull */
+
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -26,7 +28,6 @@
 #include "uuid/uuid.h"
 
 #ifdef HAVE_STRTOULL
-#define __USE_ISOC9X
 #define STRTOULL strtoull /* defined in stdlib.h if you try hard enough */
 #else
 /* FIXME: need to support real strtoull here */
@@ -314,13 +315,12 @@ static int parse_tag(blkid_cache cache, blkid_dev dev, char **cp)
 		return ret;
 
 	/* Some tags are stored directly in the device struct */
-	if (!strcmp(name, "DEVNO")) 
+	if (!strcmp(name, "DEVNO"))
 		dev->bid_devno = STRTOULL(value, 0, 0);
 	else if (!strcmp(name, "PRI"))
 		dev->bid_pri = strtol(value, 0, 0);
 	else if (!strcmp(name, "TIME"))
-		/* FIXME: need to parse a long long eventually */
-		dev->bid_time = strtol(value, 0, 0);
+		dev->bid_time = STRTOULL(value, 0, 0);
 	else
 		ret = blkid_set_tag(dev, name, value, strlen(value));
 
@@ -401,7 +401,7 @@ void blkid_read_cache(blkid_cache cache)
 					cache->bic_filename));
 		goto errout;
 	}
-	
+
 	DBG(DEBUG_CACHE, printf("reading cache file %s\n",
 				cache->bic_filename));
 
@@ -463,7 +463,7 @@ static void debug_dump_dev(blkid_dev dev)
 	list_for_each(p, &dev->bid_tags) {
 		blkid_tag tag = list_entry(p, struct blkid_struct_tag, bit_tags);
 		if (tag)
-			printf("    tag: %s=\"%s\"\n", tag->bit_name, 
+			printf("    tag: %s=\"%s\"\n", tag->bit_name,
 			       tag->bit_val);
 		else
 			printf("    tag: NULL\n");

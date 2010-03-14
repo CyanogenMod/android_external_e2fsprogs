@@ -7,10 +7,14 @@ INSTALL = @INSTALL@
 
 @MCONFIG@
 
+% : %.sh
+
 @RESIZER_CMT@RESIZE_DIR= resize
 @DEBUGFS_CMT@DEBUGFS_DIR= debugfs
+@UUID_CMT@UUID_LIB_SUBDIR= lib/uuid
+@BLKID_CMT@BLKID_LIB_SUBDIR= lib/blkid
 
-LIB_SUBDIRS=lib/et lib/ss lib/e2p lib/ext2fs lib/uuid lib/blkid intl
+LIB_SUBDIRS=lib/et lib/ss lib/e2p $(UUID_LIB_SUBDIR) lib/ext2fs $(BLKID_LIB_SUBDIR) intl
 PROG_SUBDIRS=e2fsck $(DEBUGFS_DIR) misc $(RESIZE_DIR) tests/progs po
 SUBDIRS=util $(LIB_SUBDIRS) $(PROG_SUBDIRS) tests
 
@@ -23,8 +27,11 @@ all:: subs
 	$(MAKE) progs
 	$(MAKE) docs
 
-subs:
-	@for i in $(SUBS) ; do if test -d `dirname $$i` ; then $(MAKE) $$i ; fi ; done
+subs: $(DEP_SUBSTITUTE)
+	@for i in $(SUBS) ; do if test -d `dirname $$i` ; \
+		then $(MAKE) $$i || exit $$? ; fi ; done
+	@(if test -d lib/et ; then cd lib/et && $(MAKE) compile_et; fi)
+	@(if test -d lib/ext2fs ; then cd lib/ext2fs && $(MAKE) ext2_err.h; fi)
 
 progs: subs all-progs-recursive
 libs: subs all-libs-recursive

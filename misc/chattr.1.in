@@ -1,11 +1,11 @@
 .\" -*- nroff -*-
 .TH CHATTR 1 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
 .SH NAME
-chattr \- change file attributes on a Linux second extended file system
+chattr \- change file attributes on a Linux file system
 .SH SYNOPSIS
 .B chattr
 [
-.B \-RV
+.B \-RVf
 ]
 [
 .B \-v
@@ -17,28 +17,35 @@ chattr \- change file attributes on a Linux second extended file system
 .I files...
 .SH DESCRIPTION
 .B chattr
-changes the file attributes on a Linux second extended file system.
+changes the file attributes on a Linux file system.
 .PP
-The format of a symbolic mode is +-=[ASacDdIijsTtu].
+The format of a symbolic mode is +-=[acdeijstuADST].
 .PP
 The operator `+' causes the selected attributes to be added to the
 existing attributes of the files; `-' causes them to be removed; and
 `=' causes them to be the only attributes that the files have.
 .PP
-The letters `acdijsuADST' select the new attributes for the files: 
-append only (a), compressed (c), no dump (d), immutable (i),
+The letters `acdeijstuADST' select the new attributes for the files:
+append only (a), compressed (c), no dump (d), extent format (e), immutable (i),
 data journalling (j), secure deletion (s), no tail-merging (t), 
 undeletable (u), no atime updates (A), synchronous directory updates (D), 
 synchronous updates (S), and top of directory hierarchy (T).
+.PP
+The following attributes are read-only, and may be listed by
+.BR lsattr (1)
+but not modified by chattr: huge file (h), compression error (E),
+indexed directory (I), compression raw access (X), and compressed dirty
+file (Z).
 .SH OPTIONS
 .TP
 .B \-R
 Recursively change attributes of directories and their contents.
-Symbolic links encountered during recursive directory traversals are
-ignored.
 .TP
 .B \-V
 Be verbose with chattr's output and print the program version.
+.TP
+.B \-f
+Suppress most error messages.
 .TP
 .BI \-v " version"
 Set the file's version/generation number.
@@ -72,8 +79,19 @@ set or reset using
 although it can be displayed by
 .BR lsattr (1).
 .PP
+The 'e' attribute indicates that the file is using extents for mapping
+the blocks on disk.  It may not be removed using
+.BR chattr (1).
+.PP
 The 'I' attribute is used by the htree code to indicate that a directory
 is being indexed using hashed trees.  It may not be set or reset using 
+.BR chattr (1),
+although it can be displayed by
+.BR lsattr (1).
+.PP
+The 'h' attribute indicates the file is storing its blocks in units of the
+filesystem blocksize instead of in units of sectors, and means that the file
+is (or at one time was) larger than 2TB.  It may not be set or reset using
 .BR chattr (1),
 although it can be displayed by
 .BR lsattr (1).
@@ -100,8 +118,14 @@ the changes are written synchronously on the disk; this is equivalent to
 the `sync' mount option applied to a subset of the files.
 .PP
 A directory with the 'T' attribute will be deemed to be the top of 
-directory hierarchies for the purposes of the Orlov block allocator
-(which is used in on systems with Linux 2.5.46 or later).
+directory hierarchies for the purposes of the Orlov block allocator.
+This is a hint to the block allocator used by ext3 and ext4 that the
+subdirectories under this directory are not related, and thus should be
+spread apart for allocation purposes.   For example it is a very good
+idea to set the 'T' attribute on the /home directory, so that /home/john
+and /home/mary are placed into separate block groups.  For directories
+where this attribute is not set, the Orlov block allocator will try to
+group subdirectories closer together where possible.
 .PP
 A file with the 't' attribute will not have a partial block fragment at
 the end of the file merged with other files (for those filesystems which

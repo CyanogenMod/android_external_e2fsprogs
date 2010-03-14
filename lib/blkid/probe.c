@@ -26,7 +26,9 @@
 #ifdef HAVE_SYS_MKDEV_H
 #include <sys/mkdev.h>
 #endif
+#ifdef __linux__
 #include <sys/utsname.h>
+#endif
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -47,7 +49,7 @@ static int figure_label_len(const unsigned char *label, int len)
 	return 0;
 }
 
-static unsigned char *get_buffer(struct blkid_probe *pr, 
+static unsigned char *get_buffer(struct blkid_probe *pr,
 			  blkid_loff_t off, size_t len)
 {
 	ssize_t		ret_read;
@@ -96,7 +98,7 @@ static int check_mdraid(int fd, unsigned char *ret_uuid)
 	struct mdp_superblock_s *md;
 	blkid_loff_t		offset;
 	char			buf[4096];
-	
+
 	if (fd < 0)
 		return -BLKID_ERR_PARAM;
 
@@ -139,7 +141,7 @@ static void get_ext2_info(blkid_dev dev, struct blkid_magic *id,
 	struct ext2_super_block *es = (struct ext2_super_block *) buf;
 	const char *label = 0;
 
-	DBG(DEBUG_PROBE, printf("ext2_sb.compat = %08X:%08X:%08X\n", 
+	DBG(DEBUG_PROBE, printf("ext2_sb.compat = %08X:%08X:%08X\n",
 		   blkid_le32(es->s_feature_compat),
 		   blkid_le32(es->s_feature_incompat),
 		   blkid_le32(es->s_feature_ro_compat)));
@@ -203,10 +205,11 @@ static int fs_proc_check(const char *fs_name)
  */
 static int check_for_modules(const char *fs_name)
 {
+#ifdef __linux__
 	struct utsname	uts;
 	FILE		*f;
-	char		buf[1024], *cp, *t;
-	int		i;
+	char		buf[1024], *cp;
+	int		namesz;
 
 	if (uname(&uts))
 		return (0);
@@ -215,6 +218,9 @@ static int check_for_modules(const char *fs_name)
 	f = fopen(buf, "r");
 	if (!f)
 		return (0);
+
+	namesz = strlen(fs_name);
+
 	while (!feof(f)) {
 		if (!fgets(buf, sizeof(buf), f))
 			break;
@@ -224,17 +230,67 @@ static int check_for_modules(const char *fs_name)
 			continue;
 		if ((cp = strrchr(buf, '/')) != NULL)
 			cp++;
-		i = strlen(cp);
-		if (i > 3) {
-			t = cp + i - 3;
-			if (!strcmp(t, ".ko"))
-				*t = 0;
-		}
-		if (!strcmp(cp, fs_name))
+		else
+			cp = buf;
+		if (!strncmp(cp, fs_name, namesz) &&
+		    (!strcmp(cp + namesz, ".ko") ||
+		     !strcmp(cp + namesz, ".ko.gz"))) {
+			fclose(f);
 			return (1);
+		}
 	}
 	fclose(f);
+#endif
 	return (0);
+}
+
+static int linux_version_code()
+{
+#ifdef __linux__
+	struct utsname	ut;
+	static		version_code = -1;
+	int		major, minor, rev;
+	char		*endptr;
+	const char 	*cp;
+
+	if (version_code > 0)
+		return version_code;
+
+	if (uname(&ut))
+		return 0;
+	cp = ut.release;
+
+	major = strtol(cp, &endptr, 10);
+	if (cp == endptr || *endptr != '.')
+		return 0;
+	cp = endptr + 1;
+	minor = strtol(cp, &endptr, 10);
+	if (cp == endptr || *endptr != '.')
+		return 0;
+	cp = endptr + 1;
+	rev = strtol(cp, &endptr, 10);
+	if (cp == endptr)
+		return 0;
+	version_code = (((major * 256) + minor) * 256) + rev;
+	return version_code;
+#else
+	return 0;
+#endif
+}
+
+#define EXT4_SUPPORTS_EXT2 (2 * 65536 + 6*256 + 29)
+
+static int system_supports_ext2(void)
+{
+	static time_t	last_check = 0;
+	static int	ret = -1;
+	time_t		now = time(0);
+
+	if (ret != -1 || (now - last_check) < 5)
+		return ret;
+	last_check = now;
+	ret = (fs_proc_check("ext2") || check_for_modules("ext2"));
+	return ret;
 }
 
 static int system_supports_ext4(void)
@@ -243,7 +299,7 @@ static int system_supports_ext4(void)
 	static int	ret = -1;
 	time_t		now = time(0);
 
-	if (ret != -1 || (last_check - now) < 5)
+	if (ret != -1 || (now - last_check) < 5)
 		return ret;
 	last_check = now;
 	ret = (fs_proc_check("ext4") || check_for_modules("ext4"));
@@ -256,7 +312,7 @@ static int system_supports_ext4dev(void)
 	static int	ret = -1;
 	time_t		now = time(0);
 
-	if (ret != -1 || (last_check - now) < 5)
+	if (ret != -1 || (now - last_check) < 5)
 		return ret;
 	last_check = now;
 	ret = (fs_proc_check("ext4dev") || check_for_modules("ext4dev"));
@@ -275,10 +331,17 @@ static int probe_ext4dev(struct blkid_probe *probe,
 	    EXT3_FEATURE_INCOMPAT_JOURNAL_DEV)
 		return -BLKID_ERR_PARAM;
 
-	/* ext4dev requires a journal */
+	/* 
+	 * If the filesystem does not have a journal and ext2 and ext4
+	 * is not present, then force this to be detected as an
+	 * ext4dev filesystem.
+	 */
 	if (!(blkid_le32(es->s_feature_compat) &
-	      EXT3_FEATURE_COMPAT_HAS_JOURNAL))
-		return -BLKID_ERR_PARAM;
+	      EXT3_FEATURE_COMPAT_HAS_JOURNAL) &&
+	    !system_supports_ext2() && !system_supports_ext4() &&
+	    system_supports_ext4dev() &&
+	    linux_version_code() >= EXT4_SUPPORTS_EXT2)
+		goto force_ext4dev;
 
 	/*
 	 * If the filesystem is marked as OK for use by in-development
@@ -296,6 +359,7 @@ static int probe_ext4dev(struct blkid_probe *probe,
 	} else
 		return -BLKID_ERR_PARAM;
 
+force_ext4dev:
     	get_ext2_info(probe->dev, id, buf);
 	return 0;
 }
@@ -307,14 +371,20 @@ static int probe_ext4(struct blkid_probe *probe, struct blkid_magic *id,
 	es = (struct ext2_super_block *)buf;
 
 	/* Distinguish from jbd */
-	if (blkid_le32(es->s_feature_incompat) & 
+	if (blkid_le32(es->s_feature_incompat) &
 	    EXT3_FEATURE_INCOMPAT_JOURNAL_DEV)
 		return -BLKID_ERR_PARAM;
 
-	/* ext4 requires journal */
+	/* 
+	 * If the filesystem does not have a journal and ext2 is not
+	 * present, then force this to be detected as an ext2
+	 * filesystem.
+	 */
 	if (!(blkid_le32(es->s_feature_compat) &
-	      EXT3_FEATURE_COMPAT_HAS_JOURNAL))
-		return -BLKID_ERR_PARAM;
+	      EXT3_FEATURE_COMPAT_HAS_JOURNAL) &&
+	    !system_supports_ext2() && system_supports_ext4() &&
+	    linux_version_code() >= EXT4_SUPPORTS_EXT2)
+		goto force_ext4;
 
 	/* Ext4 has at least one feature which ext3 doesn't understand */
 	if (!(blkid_le32(es->s_feature_ro_compat) &
@@ -323,6 +393,7 @@ static int probe_ext4(struct blkid_probe *probe, struct blkid_magic *id,
 	      EXT3_FEATURE_INCOMPAT_UNSUPPORTED))
 		return -BLKID_ERR_PARAM;
 
+force_ext4:
 	/*
 	 * If the filesystem is a OK for use by in-development
 	 * filesystem code, and ext4dev is supported or ext4 is not
@@ -346,10 +417,6 @@ static int probe_ext3(struct blkid_probe *probe, struct blkid_magic *id,
 {
 	struct ext2_super_block *es;
 	es = (struct ext2_super_block *)buf;
-
-	/* Distinguish from ext4dev */
-	if (blkid_le32(es->s_flags) & EXT2_FLAGS_TEST_FILESYS)
-		return -BLKID_ERR_PARAM;
 
 	/* ext3 requires journal */
 	if (!(blkid_le32(es->s_feature_compat) &
@@ -386,6 +453,15 @@ static int probe_ext2(struct blkid_probe *probe, struct blkid_magic *id,
 	     EXT2_FEATURE_INCOMPAT_UNSUPPORTED))
 		return -BLKID_ERR_PARAM;
 
+	/* 
+	 * If ext2 is not present, but ext4 or ext4dev are, then
+	 * disclaim we are ext2
+	 */
+	if (!system_supports_ext2() &&
+	    (system_supports_ext4() || system_supports_ext4dev()) &&
+	    linux_version_code() >= EXT4_SUPPORTS_EXT2)
+		return -BLKID_ERR_PARAM;
+
 	get_ext2_info(probe->dev, id, buf);
 	return 0;
 }
@@ -419,13 +495,13 @@ static unsigned char *search_fat_label(struct vfat_dir_entry *dir, int count)
 	for (i = 0; i < count; i++) {
 		if (dir[i].name[0] == 0x00)
 			break;
-		
+
 		if ((dir[i].name[0] == FAT_ENTRY_FREE) ||
 		    (dir[i].cluster_high != 0 || dir[i].cluster_low != 0) ||
 		    ((dir[i].attr & FAT_ATTR_MASK) == FAT_ATTR_LONG_NAME))
 			continue;
 
-		if ((dir[i].attr & (FAT_ATTR_VOLUME_ID | FAT_ATTR_DIR)) == 
+		if ((dir[i].attr & (FAT_ATTR_VOLUME_ID | FAT_ATTR_DIR)) ==
 		    FAT_ATTR_VOLUME_ID) {
 			return dir[i].name;
 		}
@@ -436,7 +512,7 @@ static unsigned char *search_fat_label(struct vfat_dir_entry *dir, int count)
 /* FAT label extraction from the root directory taken from Kay
  * Sievers's volume_id library */
 static int probe_fat(struct blkid_probe *probe,
-		      struct blkid_magic *id __BLKID_ATTR((unused)), 
+		      struct blkid_magic *id __BLKID_ATTR((unused)),
 		      unsigned char *buf)
 {
 	struct vfat_super_block *vs = (struct vfat_super_block *) buf;
@@ -484,11 +560,11 @@ static int probe_fat(struct blkid_probe *probe,
 	if (ms->ms_fat_length) {
 		/* the label may be an attribute in the root directory */
 		root_start = (reserved + fat_size) * sector_size;
-		root_dir_entries = vs->vs_dir_entries[0] + 
+		root_dir_entries = vs->vs_dir_entries[0] +
 			(vs->vs_dir_entries[1] << 8);
 
 		buf_size = root_dir_entries * sizeof(struct vfat_dir_entry);
-		dir = (struct vfat_dir_entry *) get_buffer(probe, root_start, 
+		dir = (struct vfat_dir_entry *) get_buffer(probe, root_start,
 							   buf_size);
 		if (dir)
 			vol_label = search_fat_label(dir, root_dir_entries);
@@ -497,7 +573,7 @@ static int probe_fat(struct blkid_probe *probe,
 			vol_label = ms->ms_label;
 		vol_serno = ms->ms_serno;
 
-		blkid_set_tag(probe->dev, "SEC_TYPE", "msdos", 
+		blkid_set_tag(probe->dev, "SEC_TYPE", "msdos",
 			      sizeof("msdos"));
 	} else {
 		/* Search the FAT32 root dir for the label attribute */
@@ -511,10 +587,10 @@ static int probe_fat(struct blkid_probe *probe,
 			int count;
 
 			next_sect_off = (next - 2) * vs->vs_cluster_size;
-			next_off = (start_data_sect + next_sect_off) * 
+			next_off = (start_data_sect + next_sect_off) *
 				sector_size;
 
-			dir = (struct vfat_dir_entry *) 
+			dir = (struct vfat_dir_entry *)
 				get_buffer(probe, next_off, buf_size);
 			if (dir == NULL)
 				break;
@@ -526,7 +602,7 @@ static int probe_fat(struct blkid_probe *probe,
 				break;
 
 			/* get FAT entry */
-			fat_entry_off = (reserved * sector_size) + 
+			fat_entry_off = (reserved * sector_size) +
 				(next * sizeof(__u32));
 			buf = get_buffer(probe, fat_entry_off, buf_size);
 			if (buf == NULL)
@@ -563,35 +639,48 @@ static int probe_fat(struct blkid_probe *probe,
  * [7-Jul-2005, Karel Zak <kzak@redhat.com>]
  */
 static int probe_fat_nomagic(struct blkid_probe *probe,
-			     struct blkid_magic *id __BLKID_ATTR((unused)), 
+			     struct blkid_magic *id __BLKID_ATTR((unused)),
 			     unsigned char *buf)
 {
-	struct vfat_super_block *vs;
+	struct msdos_super_block *ms;
 
-	vs = (struct vfat_super_block *)buf;
+	ms = (struct msdos_super_block *)buf;
 
 	/* heads check */
-	if (vs->vs_heads == 0)
+	if (ms->ms_heads == 0)
 		return 1;
 
-	/* cluster size check*/	
-	if (vs->vs_cluster_size == 0 ||
-	    (vs->vs_cluster_size & (vs->vs_cluster_size-1)))
+	/* cluster size check*/
+	if (ms->ms_cluster_size == 0 ||
+	    (ms->ms_cluster_size & (ms->ms_cluster_size-1)))
 		return 1;
 
 	/* media check */
-	if (vs->vs_media < 0xf8 && vs->vs_media != 0xf0)
+	if (ms->ms_media < 0xf8 && ms->ms_media != 0xf0)
 		return 1;
 
 	/* fat counts(Linux kernel expects at least 1 FAT table) */
-	if (!vs->vs_fats)
+	if (!ms->ms_fats)
+		return 1;
+
+	/*
+	 * OS/2 and apparently DFSee will place a FAT12/16-like
+	 * pseudo-superblock in the first 512 bytes of non-FAT
+	 * filesystems --- at least JFS and HPFS, and possibly others.
+	 * So we explicitly check for those filesystems at the
+	 * FAT12/16 filesystem magic field identifier, and if they are
+	 * present, we rule this out as a FAT filesystem, despite the
+	 * FAT-like pseudo-header.
+         */
+	if ((memcmp(ms->ms_magic, "JFS     ", 8) == 0) ||
+	    (memcmp(ms->ms_magic, "HPFS    ", 8) == 0))
 		return 1;
 
 	return probe_fat(probe, id, buf);
 }
 
 static int probe_ntfs(struct blkid_probe *probe,
-		      struct blkid_magic *id __BLKID_ATTR((unused)), 
+		      struct blkid_magic *id __BLKID_ATTR((unused)),
 		      unsigned char *buf)
 {
 	struct ntfs_super_block *ns;
@@ -618,7 +707,7 @@ static int probe_ntfs(struct blkid_probe *probe,
 	if (ns->cluster_per_mft_record < 0)
 		mft_record_size = 1 << (0-ns->cluster_per_mft_record);
 	else
-		mft_record_size = ns->cluster_per_mft_record * 
+		mft_record_size = ns->cluster_per_mft_record *
 			sectors_per_cluster * bytes_per_sector;
 	nr_clusters = blkid_le64(ns->number_of_sectors) / sectors_per_cluster;
 
@@ -626,7 +715,7 @@ static int probe_ntfs(struct blkid_probe *probe,
 	    (blkid_le64(ns->mft_mirror_cluster_location) > nr_clusters))
 		return 1;
 
-	off = blkid_le64(ns->mft_mirror_cluster_location) * 
+	off = blkid_le64(ns->mft_mirror_cluster_location) *
 		bytes_per_sector * sectors_per_cluster;
 
 	buf_mft = get_buffer(probe, off, mft_record_size);
@@ -636,7 +725,7 @@ static int probe_ntfs(struct blkid_probe *probe,
 	if (memcmp(buf_mft, "FILE", 4))
 		return 1;
 
-	off = blkid_le64(ns->mft_cluster_location) * bytes_per_sector * 
+	off = blkid_le64(ns->mft_cluster_location) * bytes_per_sector *
 		sectors_per_cluster;
 
 	buf_mft = get_buffer(probe, off, mft_record_size);
@@ -659,7 +748,7 @@ static int probe_ntfs(struct blkid_probe *probe,
 
 	attr_off = blkid_le16(mft->attrs_offset);
 	label_str[0] = 0;
-	
+
 	while (1) {
 		attr = (struct file_attribute *) (buf_mft + attr_off);
 		attr_len = blkid_le16(attr->len);
@@ -699,7 +788,7 @@ static int probe_ntfs(struct blkid_probe *probe,
 
 
 static int probe_xfs(struct blkid_probe *probe,
-		     struct blkid_magic *id __BLKID_ATTR((unused)), 
+		     struct blkid_magic *id __BLKID_ATTR((unused)),
 		     unsigned char *buf)
 {
 	struct xfs_super_block *xs;
@@ -743,7 +832,7 @@ static int probe_reiserfs(struct blkid_probe *probe,
 }
 
 static int probe_reiserfs4(struct blkid_probe *probe,
-			   struct blkid_magic *id __BLKID_ATTR((unused)), 
+			   struct blkid_magic *id __BLKID_ATTR((unused)),
 			   unsigned char *buf)
 {
 	struct reiser4_super_block *rs4 = (struct reiser4_super_block *) buf;
@@ -752,20 +841,30 @@ static int probe_reiserfs4(struct blkid_probe *probe,
 	if (strlen((char *) rs4->rs4_label))
 		label = rs4->rs4_label;
 	set_uuid(probe->dev, rs4->rs4_uuid, 0);
-	blkid_set_tag(probe->dev, "LABEL", (const char *) label, 
+	blkid_set_tag(probe->dev, "LABEL", (const char *) label,
 		      sizeof(rs4->rs4_label));
 
 	return 0;
 }
 
 static int probe_jfs(struct blkid_probe *probe,
-		     struct blkid_magic *id __BLKID_ATTR((unused)), 
+		     struct blkid_magic *id __BLKID_ATTR((unused)),
 		     unsigned char *buf)
 {
 	struct jfs_super_block *js;
 	const char *label = 0;
 
 	js = (struct jfs_super_block *)buf;
+
+	if (blkid_le32(js->js_bsize) != (1 << blkid_le16(js->js_l2bsize)))
+		return 1;
+
+	if (blkid_le32(js->js_pbsize) != (1 << blkid_le16(js->js_l2pbsize)))
+		return 1;
+
+	if ((blkid_le16(js->js_l2bsize) - blkid_le16(js->js_l2pbsize)) !=
+	    blkid_le16(js->js_l2bfactor))
+		return 1;
 
 	if (strlen((char *) js->js_label))
 		label = (char *) js->js_label;
@@ -774,11 +873,26 @@ static int probe_jfs(struct blkid_probe *probe,
 	return 0;
 }
 
+static int probe_zfs(struct blkid_probe *probe, struct blkid_magic *id,
+		     unsigned char *buf)
+{
+#if 0
+	char *vdev_label;
+	const char *pool_name = 0;
+
+	/* read nvpair data for pool name, pool GUID (complex) */
+	blkid_set_tag(probe->dev, "LABEL", pool_name, sizeof(pool_name));
+	set_uuid(probe->dev, pool_guid, 0);
+#endif
+	return 0;
+}
+
 static int probe_luks(struct blkid_probe *probe,
 		       struct blkid_magic *id __BLKID_ATTR((unused)),
 		       unsigned char *buf)
 {
 	char uuid[40];
+
 	/* 168 is the offset to the 40 character uuid:
 	 * http://luks.endorphin.org/LUKS-on-disk-format.pdf */
 	strncpy(uuid, (char *) buf+168, 40);
@@ -787,7 +901,7 @@ static int probe_luks(struct blkid_probe *probe,
 }
 
 static int probe_romfs(struct blkid_probe *probe,
-		       struct blkid_magic *id __BLKID_ATTR((unused)), 
+		       struct blkid_magic *id __BLKID_ATTR((unused)),
 		       unsigned char *buf)
 {
 	struct romfs_super_block *ros;
@@ -802,7 +916,7 @@ static int probe_romfs(struct blkid_probe *probe,
 }
 
 static int probe_cramfs(struct blkid_probe *probe,
-			struct blkid_magic *id __BLKID_ATTR((unused)), 
+			struct blkid_magic *id __BLKID_ATTR((unused)),
 			unsigned char *buf)
 {
 	struct cramfs_super_block *csb;
@@ -826,7 +940,7 @@ static int probe_swap0(struct blkid_probe *probe,
 }
 
 static int probe_swap1(struct blkid_probe *probe,
-		       struct blkid_magic *id __BLKID_ATTR((unused)),
+		       struct blkid_magic *id,
 		       unsigned char *buf __BLKID_ATTR((unused)))
 {
 	struct swap_id_block *sws;
@@ -842,10 +956,15 @@ static int probe_swap1(struct blkid_probe *probe,
 	if (!sws)
 		return 1;
 
+	/* check for wrong version or zeroed pagecount, for sanity */
+	if (!memcmp(id->bim_magic, "SWAPSPACE2", id->bim_len) &&
+			(sws->sws_version != 1 || sws->sws_lastpage == 0))
+		return 1;
+
 	/* arbitrary sanity check.. is there any garbage down there? */
 	if (sws->sws_pad[32] == 0 && sws->sws_pad[33] == 0)  {
 		if (sws->sws_volume[0])
-			blkid_set_tag(probe->dev, "LABEL", sws->sws_volume, 
+			blkid_set_tag(probe->dev, "LABEL", sws->sws_volume,
 				      sizeof(sws->sws_volume));
 		if (sws->sws_uuid[0])
 			set_uuid(probe->dev, sws->sws_uuid, 0);
@@ -854,7 +973,7 @@ static int probe_swap1(struct blkid_probe *probe,
 }
 
 static int probe_iso9660(struct blkid_probe *probe,
-			 struct blkid_magic *id __BLKID_ATTR((unused)), 
+			 struct blkid_magic *id __BLKID_ATTR((unused)),
 			 unsigned char *buf)
 {
 	struct iso_volume_descriptor *iso;
@@ -863,7 +982,7 @@ static int probe_iso9660(struct blkid_probe *probe,
 	iso = (struct iso_volume_descriptor *) buf;
 	label = iso->volume_id;
 
-	blkid_set_tag(probe->dev, "LABEL", (const char *) label, 
+	blkid_set_tag(probe->dev, "LABEL", (const char *) label,
 		      figure_label_len(label, 32));
 	return 0;
 }
@@ -874,7 +993,7 @@ static const char
 		 "NSR03", "TEA01", 0 };
 
 static int probe_udf(struct blkid_probe *probe,
-		     struct blkid_magic *id __BLKID_ATTR((unused)), 
+		     struct blkid_magic *id __BLKID_ATTR((unused)),
 		     unsigned char *buf __BLKID_ATTR((unused)))
 {
 	int j, bs;
@@ -884,7 +1003,7 @@ static int probe_udf(struct blkid_probe *probe,
 	/* determine the block size by scanning in 2K increments
 	   (block sizes larger than 2K will be null padded) */
 	for (bs = 1; bs < 16; bs++) {
-		isosb = (struct iso_volume_descriptor *) 
+		isosb = (struct iso_volume_descriptor *)
 			get_buffer(probe, bs*2048+32768, sizeof(isosb));
 		if (!isosb)
 			return 1;
@@ -895,8 +1014,8 @@ static int probe_udf(struct blkid_probe *probe,
 	/* Scan up to another 64 blocks looking for additional VSD's */
 	for (j = 1; j < 64; j++) {
 		if (j > 1) {
-			isosb = (struct iso_volume_descriptor *) 
-				get_buffer(probe, j*bs*2048+32768, 
+			isosb = (struct iso_volume_descriptor *)
+				get_buffer(probe, j*bs*2048+32768,
 					   sizeof(isosb));
 			if (!isosb)
 				return 1;
@@ -917,7 +1036,7 @@ static int probe_udf(struct blkid_probe *probe,
 }
 
 static int probe_ocfs(struct blkid_probe *probe,
-		      struct blkid_magic *id __BLKID_ATTR((unused)), 
+		      struct blkid_magic *id __BLKID_ATTR((unused)),
 		      unsigned char *buf)
 {
 	struct ocfs_volume_header ovh;
@@ -932,7 +1051,7 @@ static int probe_ocfs(struct blkid_probe *probe,
 		blkid_set_tag(probe->dev,"SEC_TYPE","ocfs1",sizeof("ocfs1"));
 	else if (major >= 9)
 		blkid_set_tag(probe->dev,"SEC_TYPE","ntocfs",sizeof("ntocfs"));
-	
+
 	blkid_set_tag(probe->dev, "LABEL", ovl.label, ocfslabellen(ovl));
 	blkid_set_tag(probe->dev, "MOUNT", ovh.mount, ocfsmountlen(ovh));
 	set_uuid(probe->dev, ovl.vol_id, 0);
@@ -940,7 +1059,7 @@ static int probe_ocfs(struct blkid_probe *probe,
 }
 
 static int probe_ocfs2(struct blkid_probe *probe,
-		       struct blkid_magic *id __BLKID_ATTR((unused)), 
+		       struct blkid_magic *id __BLKID_ATTR((unused)),
 		       unsigned char *buf)
 {
 	struct ocfs2_super_block *osb;
@@ -953,7 +1072,7 @@ static int probe_ocfs2(struct blkid_probe *probe,
 }
 
 static int probe_oracleasm(struct blkid_probe *probe,
-			   struct blkid_magic *id __BLKID_ATTR((unused)), 
+			   struct blkid_magic *id __BLKID_ATTR((unused)),
 			   unsigned char *buf)
 {
 	struct oracle_asm_disk_label *dl;
@@ -975,9 +1094,9 @@ static int probe_gfs(struct blkid_probe *probe,
 
 	if (blkid_be32(sbd->sb_fs_format) == GFS_FORMAT_FS &&
 	    blkid_be32(sbd->sb_multihost_format) == GFS_FORMAT_MULTI)
-	{	
+	{
 		blkid_set_tag(probe->dev, "UUID", 0, 0);
-	
+
 		if (strlen(sbd->sb_locktable))
 			label = sbd->sb_locktable;
 		blkid_set_tag(probe->dev, "LABEL", label, sizeof(sbd->sb_locktable));
@@ -997,9 +1116,9 @@ static int probe_gfs2(struct blkid_probe *probe,
 
 	if (blkid_be32(sbd->sb_fs_format) == GFS2_FORMAT_FS &&
 	    blkid_be32(sbd->sb_multihost_format) == GFS2_FORMAT_MULTI)
-	{	
+	{
 		blkid_set_tag(probe->dev, "UUID", 0, 0);
-	
+
 		if (strlen(sbd->sb_locktable))
 			label = sbd->sb_locktable;
 		blkid_set_tag(probe->dev, "LABEL", label, sizeof(sbd->sb_locktable));
@@ -1008,17 +1127,178 @@ static int probe_gfs2(struct blkid_probe *probe,
 	return 1;
 }
 
-static int probe_hfsplus(struct blkid_probe *probe __BLKID_ATTR((unused)),
+static void unicode_16be_to_utf8(unsigned char *str, int out_len,
+				 const unsigned char *buf, int in_len)
+{
+	int i, j;
+	unsigned int c;
+
+	for (i = j = 0; i + 2 <= in_len; i += 2) {
+		c = (buf[i] << 8) | buf[i+1];
+		if (c == 0) {
+			str[j] = '\0';
+			break;
+		} else if (c < 0x80) {
+			if (j+1 >= out_len)
+				break;
+			str[j++] = (unsigned char) c;
+		} else if (c < 0x800) {
+			if (j+2 >= out_len)
+				break;
+			str[j++] = (unsigned char) (0xc0 | (c >> 6));
+			str[j++] = (unsigned char) (0x80 | (c & 0x3f));
+		} else {
+			if (j+3 >= out_len)
+				break;
+			str[j++] = (unsigned char) (0xe0 | (c >> 12));
+			str[j++] = (unsigned char) (0x80 | ((c >> 6) & 0x3f));
+			str[j++] = (unsigned char) (0x80 | (c & 0x3f));
+		}
+	}
+	str[j] = '\0';
+}
+
+static int probe_hfs(struct blkid_probe *probe __BLKID_ATTR((unused)),
 			 struct blkid_magic *id __BLKID_ATTR((unused)),
 			 unsigned char *buf)
 {
-	struct hfs_mdb *sbd = (struct hfs_mdb *)buf;
+	struct hfs_mdb *hfs = (struct hfs_mdb *) buf;
+	char	uuid_str[17];
+	__u64	uuid;
+
+	if ((memcmp(hfs->embed_sig, "H+", 2) == 0) ||
+	    (memcmp(hfs->embed_sig, "HX", 2) == 0))
+		return 1;	/* Not hfs, but an embedded HFS+ */
+
+	uuid = blkid_le64(*((unsigned long long *) hfs->finder_info.id));
+	if (uuid) {
+		sprintf(uuid_str, "%016llX", uuid);
+		blkid_set_tag(probe->dev, "UUID", uuid_str, 0);
+	}
+	blkid_set_tag(probe->dev, "LABEL", hfs->label, hfs->label_len);
+	return 0;
+}
+
+
+static int probe_hfsplus(struct blkid_probe *probe,
+			 struct blkid_magic *id,
+			 unsigned char *buf)
+{
+	struct hfsplus_extent extents[HFSPLUS_EXTENT_COUNT];
+	struct hfsplus_bnode_descriptor *descr;
+	struct hfsplus_bheader_record *bnode;
+	struct hfsplus_catalog_key *key;
+	struct hfsplus_vol_header *hfsplus;
+	struct hfs_mdb *sbd = (struct hfs_mdb *) buf;
+	unsigned int alloc_block_size;
+	unsigned int alloc_first_block;
+	unsigned int embed_first_block;
+	unsigned int off = 0;
+	unsigned int blocksize;
+	unsigned int cat_block;
+	unsigned int ext_block_start;
+	unsigned int ext_block_count;
+	unsigned int record_count;
+	unsigned int leaf_node_head;
+	unsigned int leaf_node_count;
+	unsigned int leaf_node_size;
+	unsigned int leaf_block;
+	unsigned int label_len;
+	int ext;
+	__u64 leaf_off, uuid;
+	char	uuid_str[17], label[512];
 
 	/* Check for a HFS+ volume embedded in a HFS volume */
-	if (memcmp(sbd->embed_sig, "H+", 2) == 0)
+	if (memcmp(sbd->signature, "BD", 2) == 0) {
+		if ((memcmp(sbd->embed_sig, "H+", 2) != 0) &&
+		    (memcmp(sbd->embed_sig, "HX", 2) != 0))
+			/* This must be an HFS volume, so fail */
+			return 1;
+
+		alloc_block_size = blkid_be32(sbd->al_blk_size);
+		alloc_first_block = blkid_be16(sbd->al_bl_st);
+		embed_first_block = blkid_be16(sbd->embed_startblock);
+		off = (alloc_first_block * 512) +
+			(embed_first_block * alloc_block_size);
+		buf = get_buffer(probe, off + (id->bim_kboff * 1024),
+				 sizeof(sbd));
+		if (!buf)
+			return 1;
+
+		hfsplus = (struct hfsplus_vol_header *) buf;
+	}
+
+	hfsplus = (struct hfsplus_vol_header *) buf;
+
+	if ((memcmp(hfsplus->signature, "H+", 2) != 0) &&
+	    (memcmp(hfsplus->signature, "HX", 2) != 0))
+		return 1;
+
+	uuid = blkid_le64(*((unsigned long long *) hfsplus->finder_info.id));
+	if (uuid) {
+		sprintf(uuid_str, "%016llX", uuid);
+		blkid_set_tag(probe->dev, "UUID", uuid_str, 0);
+	}
+
+	blocksize = blkid_be32(hfsplus->blocksize);
+	memcpy(extents, hfsplus->cat_file.extents, sizeof(extents));
+	cat_block = blkid_be32(extents[0].start_block);
+
+	buf = get_buffer(probe, off + (cat_block * blocksize), 0x2000);
+	if (!buf)
 		return 0;
 
-	return 1;
+	bnode = (struct hfsplus_bheader_record *)
+		&buf[sizeof(struct hfsplus_bnode_descriptor)];
+
+	leaf_node_head = blkid_be32(bnode->leaf_head);
+	leaf_node_size = blkid_be16(bnode->node_size);
+	leaf_node_count = blkid_be32(bnode->leaf_count);
+	if (leaf_node_count == 0)
+		return 0;
+
+	leaf_block = (leaf_node_head * leaf_node_size) / blocksize;
+
+	/* get physical location */
+	for (ext = 0; ext < HFSPLUS_EXTENT_COUNT; ext++) {
+		ext_block_start = blkid_be32(extents[ext].start_block);
+		ext_block_count = blkid_be32(extents[ext].block_count);
+		if (ext_block_count == 0)
+			return 0;
+
+		/* this is our extent */
+		if (leaf_block < ext_block_count)
+			break;
+
+		leaf_block -= ext_block_count;
+	}
+	if (ext == HFSPLUS_EXTENT_COUNT)
+		return 0;
+
+	leaf_off = (ext_block_start + leaf_block) * blocksize;
+
+	buf = get_buffer(probe, off + leaf_off, leaf_node_size);
+	if (!buf)
+		return 0;
+
+	descr = (struct hfsplus_bnode_descriptor *) buf;
+	record_count = blkid_be16(descr->num_recs);
+	if (record_count == 0)
+		return 0;
+
+	if (descr->type != HFS_NODE_LEAF)
+		return 0;
+
+	key = (struct hfsplus_catalog_key *)
+		&buf[sizeof(struct hfsplus_bnode_descriptor)];
+
+	if (blkid_be32(key->parent_id) != HFSPLUS_POR_CNID)
+		return 0;
+
+	label_len = blkid_be16(key->unicode_len) * 2;
+	unicode_16be_to_utf8(label, sizeof(label), key->unicode, label_len);
+	blkid_set_tag(probe->dev, "LABEL", label, 0);
+	return 0;
 }
 
 #define LVM2_LABEL_SIZE 512
@@ -1042,12 +1322,11 @@ static unsigned int lvm2_calc_crc(const void *buf, unsigned int size)
 }
 
 static int probe_lvm2(struct blkid_probe *probe,
-			struct blkid_magic *id __BLKID_ATTR((unused)),
+			struct blkid_magic *id,
 			unsigned char *buf)
 {
-	int sector = (id->bim_kboff) << 1;;
-	struct lvm2_pv_label_header *label;
-	label = (struct lvm2_pv_label_header *)buf;
+	int sector = (id->bim_kboff) << 1;
+	struct lvm2_pv_label_header *label= (struct lvm2_pv_label_header *)buf;
 	char *p, *q, uuid[40];
 	unsigned int i, b;
 
@@ -1088,15 +1367,22 @@ static int probe_lvm2(struct blkid_probe *probe,
 
 	return 0;
 }
-/*
- * BLKID_BLK_OFFS is at least as large as the highest bim_kboff defined
- * in the type_array table below + bim_kbalign.
- *
- * When probing for a lot of magics, we handle everything in 1kB buffers so
- * that we don't have to worry about reading each combination of block sizes.
- */
-#define BLKID_BLK_OFFS	64	/* currently reiserfs */
 
+static int probe_btrfs(struct blkid_probe *probe,
+			struct blkid_magic *id,
+			unsigned char *buf)
+{
+	struct btrfs_super_block *bs;
+	const char *label = 0;
+
+	bs = (struct btrfs_super_block *)buf;
+
+	if (strlen(bs->label))
+		label = bs->label;
+	blkid_set_tag(probe->dev, "LABEL", label, sizeof(bs->label));
+	set_uuid(probe->dev, bs->fsid, 0);
+	return 0;
+}
 /*
  * Various filesystem magics that we can check for.  Note that kboff and
  * sboff are in kilobytes and bytes respectively.  All magics are in
@@ -1147,9 +1433,14 @@ static struct blkid_magic type_array[] = {
   { "iso9660",	32,	 1,  5, "CD001",		probe_iso9660 },
   { "iso9660",	32,	 9,  5, "CDROM",		probe_iso9660 },
   { "jfs",	32,	 0,  4, "JFS1",			probe_jfs },
+  { "zfs",       8,	 0,  8, "\0\0\x02\xf5\xb0\x07\xb1\x0c", probe_zfs },
+  { "zfs",       8,	 0,  8, "\x0c\xb1\x07\xb0\xf5\x02\0\0", probe_zfs },
+  { "zfs",     264,	 0,  8, "\0\0\x02\xf5\xb0\x07\xb1\x0c", probe_zfs },
+  { "zfs",     264,	 0,  8, "\x0c\xb1\x07\xb0\xf5\x02\0\0", probe_zfs },
   { "hfsplus",	 1,	 0,  2, "BD",			probe_hfsplus },
-  { "hfsplus",	 1,	 0,  2, "H+",			0 },
-  { "hfs",	 1,	 0,  2, "BD",			0 },
+  { "hfsplus",	 1,	 0,  2, "H+",			probe_hfsplus },
+  { "hfsplus",	 1,	 0,  2, "HX",			probe_hfsplus },
+  { "hfs",	 1,	 0,  2, "BD",			probe_hfs },
   { "ufs",	 8,  0x55c,  4, "T\031\001\000",	0 },
   { "hpfs",	 8,	 0,  4, "I\350\225\371",	0 },
   { "sysv",	 0,  0x3f8,  4, "\020~\030\375",	0 },
@@ -1157,22 +1448,27 @@ static struct blkid_magic type_array[] = {
   { "swap",	 0,  0xff6, 10, "SWAPSPACE2",		probe_swap1 },
   { "swsuspend", 0,  0xff6,  9, "S1SUSPEND",		probe_swap1 },
   { "swsuspend", 0,  0xff6,  9, "S2SUSPEND",		probe_swap1 },
+  { "swsuspend", 0,  0xff6,  9, "ULSUSPEND",		probe_swap1 },
   { "swap",	 0, 0x1ff6, 10, "SWAP-SPACE",		probe_swap0 },
   { "swap",	 0, 0x1ff6, 10, "SWAPSPACE2",		probe_swap1 },
   { "swsuspend", 0, 0x1ff6,  9, "S1SUSPEND",		probe_swap1 },
   { "swsuspend", 0, 0x1ff6,  9, "S2SUSPEND",		probe_swap1 },
+  { "swsuspend", 0, 0x1ff6,  9, "ULSUSPEND",		probe_swap1 },
   { "swap",	 0, 0x3ff6, 10, "SWAP-SPACE",		probe_swap0 },
   { "swap",	 0, 0x3ff6, 10, "SWAPSPACE2",		probe_swap1 },
   { "swsuspend", 0, 0x3ff6,  9, "S1SUSPEND",		probe_swap1 },
   { "swsuspend", 0, 0x3ff6,  9, "S2SUSPEND",		probe_swap1 },
+  { "swsuspend", 0, 0x3ff6,  9, "ULSUSPEND",		probe_swap1 },
   { "swap",	 0, 0x7ff6, 10, "SWAP-SPACE",		probe_swap0 },
   { "swap",	 0, 0x7ff6, 10, "SWAPSPACE2",		probe_swap1 },
   { "swsuspend", 0, 0x7ff6,  9, "S1SUSPEND",		probe_swap1 },
   { "swsuspend", 0, 0x7ff6,  9, "S2SUSPEND",		probe_swap1 },
+  { "swsuspend", 0, 0x7ff6,  9, "ULSUSPEND",		probe_swap1 },
   { "swap",	 0, 0xfff6, 10, "SWAP-SPACE",		probe_swap0 },
   { "swap",	 0, 0xfff6, 10, "SWAPSPACE2",		probe_swap1 },
   { "swsuspend", 0, 0xfff6,  9, "S1SUSPEND",		probe_swap1 },
   { "swsuspend", 0, 0xfff6,  9, "S2SUSPEND",		probe_swap1 },
+  { "swsuspend", 0, 0xfff6,  9, "ULSUSPEND",		probe_swap1 },
   { "ocfs",	 0,	 8,  9,	"OracleCFS",		probe_ocfs },
   { "ocfs2",	 1,	 0,  6,	"OCFSV2",		probe_ocfs2 },
   { "ocfs2",	 2,	 0,  6,	"OCFSV2",		probe_ocfs2 },
@@ -1185,6 +1481,7 @@ static struct blkid_magic type_array[] = {
   { "lvm2pv",	 0,  0x018,  8, "LVM2 001",		probe_lvm2 },
   { "lvm2pv",	 1,  0x018,  8, "LVM2 001",		probe_lvm2 },
   { "lvm2pv",	 1,  0x218,  8, "LVM2 001",		probe_lvm2 },
+  { "btrfs",	 64,  0x40,  8, "_BHRfS_M",		probe_btrfs },
   {   NULL,	 0,	 0,  0, NULL,			NULL }
 };
 
@@ -1214,28 +1511,40 @@ blkid_dev blkid_verify(blkid_cache cache, blkid_dev dev)
 	now = time(0);
 	diff = now - dev->bid_time;
 
-	if ((now > dev->bid_time) && (diff > 0) && 
-	    ((diff < BLKID_PROBE_MIN) || 
+	if (stat(dev->bid_name, &st) < 0) {
+		DBG(DEBUG_PROBE,
+		    printf("blkid_verify: error %s (%d) while "
+			   "trying to stat %s\n", strerror(errno), errno,
+			   dev->bid_name));
+	open_err:
+		if ((errno == EPERM) || (errno == EACCES) || (errno == ENOENT)) {
+			/* We don't have read permission, just return cache data. */
+			DBG(DEBUG_PROBE, printf("returning unverified data for %s\n",
+						dev->bid_name));
+			return dev;
+		}
+		blkid_free_dev(dev);
+		return NULL;
+	}
+
+	if ((now >= dev->bid_time) &&
+	    (st.st_mtime <= dev->bid_time) &&
+	    ((diff < BLKID_PROBE_MIN) ||
 	     (dev->bid_flags & BLKID_BID_FL_VERIFIED &&
 	      diff < BLKID_PROBE_INTERVAL)))
 		return dev;
 
 	DBG(DEBUG_PROBE,
-	    printf("need to revalidate %s (time since last check %llu)\n", 
-		   dev->bid_name, (unsigned long long)diff));
+	    printf("need to revalidate %s (cache time %lu, stat time %lu,\n\t"
+		   "time since last check %lu)\n",
+		   dev->bid_name, (unsigned long)dev->bid_time,
+		   (unsigned long)st.st_mtime, (unsigned long)diff));
 
-	if (((probe.fd = open(dev->bid_name, O_RDONLY)) < 0) ||
-	    (fstat(probe.fd, &st) < 0)) {
-		if (probe.fd >= 0) close(probe.fd);
-		if (errno != EPERM) {
-			blkid_free_dev(dev);
-			return NULL;
-		}
-		/* We don't have read permission, just return cache data. */
-		DBG(DEBUG_PROBE,
-		    printf("returning unverified data for %s\n",
-			   dev->bid_name));
-		return dev;
+	if ((probe.fd = open(dev->bid_name, O_RDONLY)) < 0) {
+		DBG(DEBUG_PROBE, printf("blkid_verify: error %s (%d) while "
+					"opening %s\n", strerror(errno), errno,
+					dev->bid_name));
+		goto open_err;
 	}
 
 	probe.cache = cache;
@@ -1243,12 +1552,12 @@ blkid_dev blkid_verify(blkid_cache cache, blkid_dev dev)
 	probe.sbbuf = 0;
 	probe.buf = 0;
 	probe.buf_max = 0;
-	
+
 	/*
 	 * Iterate over the type array.  If we already know the type,
 	 * then try that first.  If it doesn't work, then blow away
 	 * the type information, and try again.
-	 * 
+	 *
 	 */
 try_again:
 	type = 0;
@@ -1271,7 +1580,7 @@ try_again:
 		if (!buf)
 			continue;
 
-		if (memcmp(id->bim_magic, buf + (id->bim_sboff&0x3ff),
+		if (memcmp(id->bim_magic, buf + (id->bim_sboff & 0x3ff),
 			   id->bim_len))
 			continue;
 
@@ -1301,7 +1610,7 @@ try_again:
 		dev = 0;
 		goto found_type;
 	}
-		
+
 found_type:
 	if (dev && type) {
 		dev->bid_devno = st.st_rdev;
@@ -1310,16 +1619,14 @@ found_type:
 		cache->bic_flags |= BLKID_BIC_FL_CHANGED;
 
 		blkid_set_tag(dev, "TYPE", type, 0);
-				
+
 		DBG(DEBUG_PROBE, printf("%s: devno 0x%04llx, type %s\n",
 			   dev->bid_name, (long long)st.st_rdev, type));
 	}
 
-	if (probe.sbbuf)
-		free(probe.sbbuf);
-	if (probe.buf)
-		free(probe.buf);
-	if (probe.fd >= 0) 
+	free(probe.sbbuf);
+	free(probe.buf);
+	if (probe.fd >= 0)
 		close(probe.fd);
 
 	return dev;
@@ -1363,7 +1670,7 @@ int main(int argc, char **argv)
 		printf("LABEL='%s'\n", dev->bid_label);
 	if (dev->bid_uuid)
 		printf("UUID='%s'\n", dev->bid_uuid);
-	
+
 	blkid_free_dev(dev);
 	return (0);
 }

@@ -28,6 +28,9 @@
 #endif
 #include <string.h>
 #include <sys/stat.h>
+#include <ctype.h>
+
+#include "fsck.h"
 
 /*
  * ext2fs_check_if_mounted flags
@@ -74,18 +77,15 @@ static char *parse_word(char **buf)
 static errcode_t check_mntent_file(const char *mtab_file, const char *file,
 				   int *mount_flags)
 {
+#ifdef HAVE_MNTENT_H
 	struct stat	st_buf;
 	errcode_t	retval = 0;
 	dev_t		file_dev=0, file_rdev=0;
 	ino_t		file_ino=0;
 	FILE 		*f;
 	char		buf[1024], *device = 0, *mnt_dir = 0, *cp;
-	int		fd;
 
 	*mount_flags = 0;
-	if ((f = fopen(mtab_file, "r")) == NULL)
-		return errno;
-
 	if ((f = setmntent (mtab_file, "r")) == NULL)
 		return errno;
 	if (stat(file, &st_buf) == 0) {
@@ -177,6 +177,9 @@ static errcode_t check_mntent_file(const char *mtab_file, const char *file,
 errout:
 	endmntent (f);
 	return retval;
+#else /* !HAVE_MNTENT_H */
+	return 0;
+#endif /* HAVE_MNTENT_H */
 }
 
 int is_mounted(const char *file)

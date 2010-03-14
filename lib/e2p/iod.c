@@ -27,9 +27,9 @@ int iterate_on_dir (const char * dir_name,
 {
 	DIR * dir;
 	struct dirent *de, *dep;
-	int	max_len = -1, len;
+	int	max_len = -1, len, ret = 0;
 
-#if HAVE_PATHCONF && defined(_PC_NAME_MAX) 
+#if HAVE_PATHCONF && defined(_PC_NAME_MAX)
 	max_len = pathconf(dir_name, _PC_NAME_MAX);
 #endif
 	if (max_len == -1) {
@@ -56,17 +56,18 @@ int iterate_on_dir (const char * dir_name,
 		return -1;
 	}
 	while ((dep = readdir (dir))) {
-		len = sizeof(struct dirent);
 #ifdef HAVE_RECLEN_DIRENT
-		if (len < dep->d_reclen)
-			len = dep->d_reclen;
+		len = dep->d_reclen;
 		if (len > max_len)
 			len = max_len;
+#else
+		len = sizeof(struct dirent);
 #endif
 		memcpy(de, dep, len);
-		(*func) (dir_name, de, private);
+		if ((*func)(dir_name, de, private))
+			ret++;
 	}
 	free(de);
 	closedir(dir);
-	return 0;
+	return ret;
 }

@@ -16,7 +16,7 @@
  * 3. The name of the author may not be used to endorse or promote
  *    products derived from this software without specific prior
  *    written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, ALL OF
@@ -32,10 +32,16 @@
  * %End-Header%
  */
 
+#ifdef _WIN32
+#define _WIN32_WINNT 0x0500
+#include <windows.h>
+#define UUID MYUUID
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "uuid.h"
+#include <uuid/uuid.h>
 
 static int test_uuid(const char * uuid, int isValid)
 {
@@ -54,8 +60,14 @@ static int test_uuid(const char * uuid, int isValid)
 	return 0;
 }
 
+#ifdef __GNUC__
+#define ATTR(x) __attribute__(x)
+#else
+#define ATTR(x)
+#endif
+
 int
-main(int argc, char **argv)
+main(int argc ATTR((unused)) , char **argv ATTR((unused)))
 {
 	uuid_t		buf, tst;
 	char		str[100];

@@ -4,9 +4,12 @@
 .\" .TH RESIZE2FS 8 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
 .TH RESIZE2FS 8 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
 .SH NAME
-resize2fs \- ext2/ext3 file system resizer
+resize2fs \- ext2/ext3/ext4 file system resizer
 .SH SYNOPSIS
 .B resize2fs
+[
+.B \-fFpPM
+]
 [
 .B \-d 
 .I debug-flags
@@ -15,15 +18,6 @@ resize2fs \- ext2/ext3 file system resizer
 .B \-S
 .I RAID-stride
 ]
-[
-.B \-f
-]
-[
-.B \-F
-]
-[
-.B \-p
-]
 .I device
 [
 .I size
@@ -31,8 +25,8 @@ resize2fs \- ext2/ext3 file system resizer
 .SH DESCRIPTION
 The 
 .B resize2fs 
-program will resize ext2 or ext3 file systems.  It can be used to enlarge or
-shrink an unmounted file system located on 
+program will resize ext2, ext3, or ext4 file systems.  It can be used to
+enlarge or shrink an unmounted file system located on 
 .IR device .
 If the filesystem is mounted, it can be used to expand the size of the
 mounted filesystem, assuming the kernel supports on-line resizing.  (As
@@ -92,26 +86,11 @@ into the binary.
 should be computed by adding the numbers of the desired features 
 from the following list:
 .br
-\	1\	\-\ Print out all disk I/O 
-.br
 \	2\	\-\ Debug block relocations
 .br
-\	8\	\-\ Debug inode relocations
+\	4\	\-\ Debug inode relocations
 .br
-\	16\	\-\ Debug moving the inode table
-.TP
-.B \-S \fIRAID-stride
-The 
-.B resize2fs
-program will heuristically determine the RAID stride that was specified 
-when the filesystem was created.  This option allows the user to 
-explicitly specify a RAID stride setting to be used by resize2fs instead.
-.TP
-.B \-p
-Prints out a percentage completion bars for each 
-.B resize2fs
-operation, so that the user can keep track of what
-the program is doing.
+\	8\	\-\ Debug moving the inode table
 .TP 
 .B \-f
 Forces resize2fs to proceed with the filesystem resize operation, overriding 
@@ -122,6 +101,28 @@ Flush the filesystem device's buffer caches before beginning.  Only
 really useful for doing 
 .B resize2fs
 time trials.
+.TP
+.B \-M
+Shrink the filesystem to the minimum size.
+.TP
+.B \-p
+Prints out a percentage completion bars for each
+.B resize2fs
+operation, so that the user can keep track of what
+the program is doing.
+.TP
+.B \-P
+Print the minimum size of the filesystem and exit.
+.TP
+.B \-S \fIRAID-stride
+The
+.B resize2fs
+program will heuristically determine the RAID stride that was specified
+when the filesystem was created.  This option allows the user to
+explicitly specify a RAID stride setting to be used by resize2fs instead.
+.SH KNOWN BUGS
+The minimum size of the filesystem as estimated by resize2fs may be
+incorrect, especially for filesystems with 1k and 2k blocksizes.
 .SH AUTHOR
 .B resize2fs
 was written by Theodore Ts'o <tytso@mit.edu>.

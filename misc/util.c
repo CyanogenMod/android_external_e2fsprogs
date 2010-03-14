@@ -1,6 +1,6 @@
 /*
  * util.c --- helper functions used by tune2fs and mke2fs
- * 
+ *
  * Copyright 1995, 1996, 1997, 1998, 1999, 2000 by Theodore Ts'o.
  *
  * %Begin-Header%
@@ -71,8 +71,8 @@ void proceed_question(void)
 	fflush(stderr);
 	fputs(_("Proceed anyway? (y,n) "), stdout);
 	buf[0] = 0;
-	fgets(buf, sizeof(buf), stdin);
-	if (strchr(short_yes, buf[0]) == 0)
+	if (!fgets(buf, sizeof(buf), stdin) ||
+	    strchr(short_yes, buf[0]) == 0)
 		exit(1);
 }
 
@@ -81,14 +81,14 @@ void check_plausibility(const char *device)
 	int val;
 #ifdef HAVE_OPEN64
 	struct stat64 s;
-	
+
 	val = stat64(device, &s);
 #else
 	struct stat s;
-	
+
 	val = stat(device, &s);
 #endif
-	
+
 	if(val == -1) {
 		fprintf(stderr, _("Could not stat %s --- %s\n"),
 			device, error_message(errno));
@@ -194,7 +194,7 @@ void parse_journal_opts(const char *opts)
 		if (p) {
 			*p = 0;
 			next = p+1;
-		} 
+		}
 		arg = strchr(token, '=');
 		if (arg) {
 			*arg = 0;
@@ -233,23 +233,23 @@ void parse_journal_opts(const char *opts)
 			"\tsize=<journal size in megabytes>\n"
 			"\tdevice=<journal device>\n\n"
 			"The journal size must be between "
-			"1024 and 102400 filesystem blocks.\n\n"), stderr);
+			"1024 and 10240000 filesystem blocks.\n\n"), stderr);
 		free(buf);
 		exit(1);
 	}
 	free(buf);
-}	
+}
 
 /*
  * Determine the number of journal blocks to use, either via
  * user-specified # of megabytes, or via some intelligently selected
  * defaults.
- * 
+ *
  * Find a reasonable journal file size (in blocks) given the number of blocks
  * in the filesystem.  For very small filesystems, it is not reasonable to
  * have a journal that fills more than half of the filesystem.
  */
-int figure_journal_size(int size, ext2_filsys fs)
+unsigned int figure_journal_size(int size, ext2_filsys fs)
 {
 	int j_blocks;
 
@@ -258,7 +258,7 @@ int figure_journal_size(int size, ext2_filsys fs)
 		fputs(_("\nFilesystem too small for a journal\n"), stderr);
 		return 0;
 	}
-	
+
 	if (size > 0) {
 		j_blocks = size * 1024 / (fs->blocksize	/ 1024);
 		if (j_blocks < 1024 || j_blocks > 10240000) {
@@ -269,7 +269,7 @@ int figure_journal_size(int size, ext2_filsys fs)
 				j_blocks);
 			exit(1);
 		}
-		if (j_blocks > fs->super->s_free_blocks_count / 2) {
+		if ((unsigned) j_blocks > fs->super->s_free_blocks_count / 2) {
 			fputs(_("\nJournal size too big for filesystem.\n"),
 			      stderr);
 			exit(1);

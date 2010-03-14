@@ -1,6 +1,6 @@
 /*
  * uuid.h -- private header file for uuids
- * 
+ *
  * Copyright (C) 1996, 1997 Theodore Ts'o.
  *
  * %Begin-Header%
@@ -16,7 +16,7 @@
  * 3. The name of the author may not be used to endorse or promote
  *    products derived from this software without specific prior
  *    written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, ALL OF
@@ -39,7 +39,7 @@
 #endif
 #include <sys/types.h>
 
-#include "uuid.h"
+#include <uuid/uuid.h>
 
 /*
  * Offset between 15-Oct-1582 and 1-Jan-70

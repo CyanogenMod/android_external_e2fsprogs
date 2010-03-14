@@ -30,7 +30,7 @@ struct blkid_probe {
 	size_t			buf_max;
 };
 
-typedef int (*blkid_probe_t)(struct blkid_probe *probe, 
+typedef int (*blkid_probe_t)(struct blkid_probe *probe,
 			     struct blkid_magic *id, unsigned char *buf);
 
 struct blkid_magic {
@@ -181,10 +181,13 @@ struct jfs_super_block {
 	unsigned char	js_magic[4];
 	__u32		js_version;
 	__u64		js_size;
-	__u32		js_bsize;
-	__u32		js_dummy1;
-	__u32		js_pbsize;
-	__u32		js_dummy2[27];
+	__u32		js_bsize;	/* 4: aggregate block size in bytes */
+	__u16		js_l2bsize;	/* 2: log2 of s_bsize */
+	__u16		js_l2bfactor;	/* 2: log2(s_bsize/hardware block size) */
+	__u32		js_pbsize;	/* 4: hardware/LVM block size in bytes */
+	__u16		js_l2pbsize;	/* 2: log2 of s_pbsize */
+	__u16 		js_pad;		/* 2: padding necessary for alignment */
+	__u32		js_dummy2[26];
 	unsigned char	js_uuid[16];
 	unsigned char	js_label[16];
 	unsigned char	js_loguuid[16];
@@ -344,7 +347,7 @@ struct ocfs_volume_header {
 
 struct ocfs_volume_label {
 	unsigned char	disk_lock[48];
-	char		label[64];	
+	char		label[64];
 	unsigned char	label_len[2];
 	unsigned char  vol_id[16];
 	unsigned char  vol_id_len[2];
@@ -429,15 +432,15 @@ struct gfs2_sb {
 	__u32 sb_fs_format;
 	__u32 sb_multihost_format;
 	__u32  __pad0;  /* Was superblock flags in gfs1 */
-	
+
 	__u32 sb_bsize;
 	__u32 sb_bsize_shift;
 	__u32 __pad1;   /* Was journal segment size in gfs1 */
-	
+
 	struct gfs2_inum sb_master_dir; /* Was jindex dinode in gfs1 */
 	struct gfs2_inum __pad2; /* Was rindex dinode in gfs1 */
 	struct gfs2_inum sb_root_dir;
-	
+
 	char sb_lockproto[GFS_LOCKNAME_LEN];
 	char sb_locktable[GFS_LOCKNAME_LEN];
 	/* In gfs1, quota and license dinodes followed */
@@ -531,6 +534,78 @@ struct hfs_mdb {
         __u16        embed_blockcount;
 } __attribute__((packed));
 
+
+#define HFS_NODE_LEAF			0xff
+#define HFSPLUS_POR_CNID		1
+
+struct hfsplus_bnode_descriptor {
+	__u32		next;
+	__u32		prev;
+	__u8		type;
+	__u8		height;
+	__u16		num_recs;
+	__u16		reserved;
+} __attribute__((packed));
+
+struct hfsplus_bheader_record {
+	__u16		depth;
+	__u32		root;
+	__u32		leaf_count;
+	__u32		leaf_head;
+	__u32		leaf_tail;
+	__u16		node_size;
+} __attribute__((packed));
+
+struct hfsplus_catalog_key {
+	__u16	key_len;
+	__u32	parent_id;
+	__u16	unicode_len;
+	__u8		unicode[255 * 2];
+} __attribute__((packed));
+
+struct hfsplus_extent {
+	__u32		start_block;
+	__u32		block_count;
+} __attribute__((packed));
+
+#define HFSPLUS_EXTENT_COUNT		8
+struct hfsplus_fork {
+	__u64		total_size;
+	__u32		clump_size;
+	__u32		total_blocks;
+	struct hfsplus_extent extents[HFSPLUS_EXTENT_COUNT];
+} __attribute__((packed));
+
+struct hfsplus_vol_header {
+	__u8		signature[2];
+	__u16		version;
+	__u32		attributes;
+	__u32		last_mount_vers;
+	__u32		reserved;
+	__u32		create_date;
+	__u32		modify_date;
+	__u32		backup_date;
+	__u32		checked_date;
+	__u32		file_count;
+	__u32		folder_count;
+	__u32		blocksize;
+	__u32		total_blocks;
+	__u32		free_blocks;
+	__u32		next_alloc;
+	__u32		rsrc_clump_sz;
+	__u32		data_clump_sz;
+	__u32		next_cnid;
+	__u32		write_count;
+	__u64		encodings_bmp;
+	struct hfs_finder_info finder_info;
+	struct hfsplus_fork alloc_file;
+	struct hfsplus_fork ext_file;
+	struct hfsplus_fork cat_file;
+	struct hfsplus_fork attr_file;
+	struct hfsplus_fork start_file;
+}  __attribute__((packed));
+
+
 /* this is lvm's label_header & pv_header combined. */
 
 #define LVM2_ID_LEN 32
@@ -545,6 +620,110 @@ struct lvm2_pv_label_header {
 	/* pv_header */
 	__u8	pv_uuid[LVM2_ID_LEN];
 } __attribute__ ((packed));
+
+
+/*
+ * this is a very generous portion of the super block, giving us
+ * room to translate 14 chunks with 3 stripes each.
+ */
+#define BTRFS_SYSTEM_CHUNK_ARRAY_SIZE 2048
+#define BTRFS_LABEL_SIZE 256
+#define BTRFS_UUID_SIZE 16
+#define BTRFS_FSID_SIZE 16
+#define BTRFS_CSUM_SIZE 32
+
+struct btrfs_dev_item {
+	/* the internal btrfs device id */
+	__u64 devid;
+
+	/* size of the device */
+	__u64 total_bytes;
+
+	/* bytes used */
+	__u64 bytes_used;
+
+	/* optimal io alignment for this device */
+	__u32 io_align;
+
+	/* optimal io width for this device */
+	__u32 io_width;
+
+	/* minimal io size for this device */
+	__u32 sector_size;
+
+	/* type and info about this device */
+	__u64 type;
+
+	/* expected generation for this device */
+	__u64 generation;
+
+	/*
+	 * starting byte of this partition on the device,
+	 * to allowr for stripe alignment in the future
+	 */
+	__u64 start_offset;
+
+	/* grouping information for allocation decisions */
+	__u32 dev_group;
+
+	/* seek speed 0-100 where 100 is fastest */
+	__u8 seek_speed;
+
+	/* bandwidth 0-100 where 100 is fastest */
+	__u8 bandwidth;
+
+	/* btrfs generated uuid for this device */
+	__u8 uuid[BTRFS_UUID_SIZE];
+
+	/* uuid of FS who owns this device */
+	__u8 fsid[BTRFS_UUID_SIZE];
+} __attribute__ ((__packed__));
+
+/*
+ * the super block basically lists the main trees of the FS
+ * it currently lacks any block count etc etc
+ */
+struct btrfs_super_block {
+	__u8 csum[BTRFS_CSUM_SIZE];
+	/* the first 3 fields must match struct btrfs_header */
+	__u8 fsid[BTRFS_FSID_SIZE];    /* FS specific uuid */
+	__u64 bytenr; /* this block number */
+	__u64 flags;
+
+	/* allowed to be different from the btrfs_header from here own down */
+	__u64 magic;
+	__u64 generation;
+	__u64 root;
+	__u64 chunk_root;
+	__u64 log_root;
+
+	/* this will help find the new super based on the log root */
+	__u64 log_root_transid;
+	__u64 total_bytes;
+	__u64 bytes_used;
+	__u64 root_dir_objectid;
+	__u64 num_devices;
+	__u32 sectorsize;
+	__u32 nodesize;
+	__u32 leafsize;
+	__u32 stripesize;
+	__u32 sys_chunk_array_size;
+	__u64 chunk_root_generation;
+	__u64 compat_flags;
+	__u64 compat_ro_flags;
+	__u64 incompat_flags;
+	__u16 csum_type;
+	__u8 root_level;
+	__u8 chunk_root_level;
+	__u8 log_root_level;
+	struct btrfs_dev_item dev_item;
+
+	char label[BTRFS_LABEL_SIZE];
+
+	/* future expansion */
+	__u64 reserved[32];
+	__u8 sys_chunk_array[BTRFS_SYSTEM_CHUNK_ARRAY_SIZE];
+} __attribute__ ((__packed__));
 
 /*
  * Byte swap functions
@@ -611,7 +790,7 @@ _INLINE_ __u64 blkid_swab64(__u64 val)
 	return (blkid_swab32(val >> 32) |
 		(((__u64) blkid_swab32(val & 0xFFFFFFFFUL)) << 32));
 }
-#endif 
+#endif
 
 
 
