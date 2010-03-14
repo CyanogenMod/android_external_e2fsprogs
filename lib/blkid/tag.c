@@ -10,6 +10,7 @@
  * %End-Header%
  */
 
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -53,10 +54,8 @@ void blkid_free_tag(blkid_tag tag)
 	list_del(&tag->bit_tags);	/* list of tags for this device */
 	list_del(&tag->bit_names);	/* list of tags with this type */
 
-	if (tag->bit_name)
-		free(tag->bit_name);
-	if (tag->bit_val)
-		free(tag->bit_val);
+	free(tag->bit_name);
+	free(tag->bit_val);
 
 	free(tag);
 }
@@ -82,7 +81,7 @@ blkid_tag blkid_find_tag_dev(blkid_dev dev, const char *type)
 	return NULL;
 }
 
-extern int blkid_dev_has_tag(blkid_dev dev, const char *type, 
+extern int blkid_dev_has_tag(blkid_dev dev, const char *type,
 			     const char *value)
 {
 	blkid_tag		tag;
@@ -124,7 +123,7 @@ static blkid_tag blkid_find_head_cache(blkid_cache cache, const char *type)
 
 /*
  * Set a tag on an existing device.
- * 
+ *
  * If value is NULL, then delete the tagsfrom the device.
  */
 int blkid_set_tag(blkid_dev dev, const char *name,
@@ -140,7 +139,7 @@ int blkid_set_tag(blkid_dev dev, const char *name,
 	if (!(val = blkid_strndup(value, vlength)) && value)
 		return -BLKID_ERR_MEM;
 
-	/* 
+	/*
 	 * Certain common tags are linked directly to the device struct
 	 * We need to know what they are before we do anything else because
 	 * the function name parameter might get freed later on.
@@ -173,7 +172,7 @@ int blkid_set_tag(blkid_dev dev, const char *name,
 		t->bit_dev = dev;
 
 		list_add_tail(&t->bit_tags, &dev->bid_tags);
-		
+
 		if (dev->bid_cache) {
 			head = blkid_find_head_cache(dev->bid_cache,
 						     t->bit_name);
@@ -193,11 +192,11 @@ int blkid_set_tag(blkid_dev dev, const char *name,
 			list_add_tail(&t->bit_names, &head->bit_names);
 		}
 	}
-	
+
 	/* Link common tags directly to the device struct */
 	if (dev_var)
 		*dev_var = val;
-		
+
 	if (dev->bid_cache)
 		dev->bid_cache->bic_flags |= BLKID_BIC_FL_CHANGED;
 	return 0;
@@ -205,8 +204,7 @@ int blkid_set_tag(blkid_dev dev, const char *name,
 errout:
 	if (t)
 		blkid_free_tag(t);
-	else if (val)
-		free(val);
+	else free(val);
 	if (head)
 		blkid_free_tag(head);
 	return -BLKID_ERR_MEM;
@@ -273,7 +271,7 @@ errout:
  * This series of functions iterate over all tags in a device
  */
 #define TAG_ITERATE_MAGIC	0x01a5284c
-	
+
 struct blkid_struct_tag_iterate {
 	int			magic;
 	blkid_dev		dev;
@@ -300,7 +298,7 @@ extern int blkid_tag_next(blkid_tag_iterate iter,
 			  const char **type, const char **value)
 {
 	blkid_tag tag;
-	
+
 	*type = 0;
 	*value = 0;
 	if (!iter || iter->magic != TAG_ITERATE_MAGIC ||
@@ -341,9 +339,9 @@ extern blkid_dev blkid_find_dev_with_tag(blkid_cache cache,
 		return NULL;
 
 	blkid_read_cache(cache);
-	
+
 	DBG(DEBUG_TAG, printf("looking for %s=%s in cache\n", type, value));
-	
+
 try_again:
 	pri = -1;
 	dev = 0;
@@ -351,11 +349,12 @@ try_again:
 
 	if (head) {
 		list_for_each(p, &head->bit_names) {
-			blkid_tag tmp = list_entry(p, struct blkid_struct_tag, 
+			blkid_tag tmp = list_entry(p, struct blkid_struct_tag,
 						   bit_names);
 
 			if (!strcmp(tmp->bit_val, value) &&
-			    tmp->bit_dev->bid_pri > pri) {
+			    (tmp->bit_dev->bid_pri > pri) &&
+			    !access(tmp->bit_dev->bid_name, F_OK)) {
 				dev = tmp->bit_dev;
 				pri = dev->bid_pri;
 			}
@@ -363,7 +362,7 @@ try_again:
 	}
 	if (dev && !(dev->bid_flags & BLKID_BID_FL_VERIFIED)) {
 		dev = blkid_verify(cache, dev);
-		if (dev && (dev->bid_flags & BLKID_BID_FL_VERIFIED))
+		if (!dev || (dev && (dev->bid_flags & BLKID_BID_FL_VERIFIED)))
 			goto try_again;
 	}
 
@@ -393,7 +392,7 @@ extern int optind;
 void usage(char *prog)
 {
 	fprintf(stderr, "Usage: %s [-f blkid_file] [-m debug_mask] device "
-		"[type value]\n", 
+		"[type value]\n",
 		prog);
 	fprintf(stderr, "\tList all tags for a device and exit\n");
 	exit(1);
@@ -421,7 +420,7 @@ int main(int argc, char **argv)
 		case 'm':
 			blkid_debug_mask = strtoul (optarg, &tmp, 0);
 			if (*tmp) {
-				fprintf(stderr, "Invalid debug mask: %s\n", 
+				fprintf(stderr, "Invalid debug mask: %s\n",
 					optarg);
 				exit(1);
 			}
@@ -446,14 +445,14 @@ int main(int argc, char **argv)
 
 	dev = blkid_get_dev(cache, devname, flags);
 	if (!dev) {
-		fprintf(stderr, "%s: Can not find device in blkid cache\n", 
+		fprintf(stderr, "%s: Can not find device in blkid cache\n",
 			devname);
 		exit(1);
 	}
 	if (search_type) {
 		found = blkid_dev_has_tag(dev, search_type, search_value);
 		printf("Device %s: (%s, %s) %s\n", blkid_dev_devname(dev),
-		       search_type, search_value ? search_value : "NULL", 
+		       search_type, search_value ? search_value : "NULL",
 		       found ? "FOUND" : "NOT FOUND");
 		return(!found);
 	}

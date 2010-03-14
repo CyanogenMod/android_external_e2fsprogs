@@ -1,11 +1,11 @@
 /*
  * getsize.c --- get the size of a partition.
- * 
+ *
  * Copyright (C) 1995, 1995 Theodore Ts'o.
  * Copyright (C) 2003 VMware, Inc.
  *
  * Windows version of ext2fs_get_device_size by Chris Li, VMware.
- * 
+ *
  * %Begin-Header%
  * This file may be redistributed under the terms of the GNU Public
  * License.
@@ -82,10 +82,10 @@ errcode_t ext2fs_get_device_size(const char *file, int blocksize,
 	DWORD filesize;
 #endif /* HAVE_GET_FILE_SIZE_EX */
 
-	dev = CreateFile(file, GENERIC_READ, 
+	dev = CreateFile(file, GENERIC_READ,
 			 FILE_SHARE_READ | FILE_SHARE_WRITE ,
-                	 NULL,  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,  NULL); 
- 
+                	 NULL,  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,  NULL);
+
 	if (dev == INVALID_HANDLE_VALUE)
 		return EBADF;
 	if (DeviceIoControl(dev, IOCTL_DISK_GET_PARTITION_INFO,
@@ -94,7 +94,7 @@ errcode_t ext2fs_get_device_size(const char *file, int blocksize,
 			    &retbytes, NULL)) {
 
 		*retblocks = pi.PartitionLength.QuadPart / blocksize;
-	
+
 	} else if (DeviceIoControl(dev, IOCTL_DISK_GET_DRIVE_GEOMETRY,
 				&gi, sizeof(DISK_GEOMETRY),
 				&gi, sizeof(DISK_GEOMETRY),
@@ -138,8 +138,8 @@ static int valid_offset (int fd, ext2_loff_t offset)
 /*
  * Returns the number of blocks in a partition
  */
-errcode_t ext2fs_get_device_size(const char *file, int blocksize,
-				 blk_t *retblocks)
+errcode_t ext2fs_get_device_size2(const char *file, int blocksize,
+				 blk64_t *retblocks)
 {
 	int	fd, rc = 0;
 	int valid_blkgetsize64 = 1;
@@ -169,11 +169,6 @@ errcode_t ext2fs_get_device_size(const char *file, int blocksize,
 
 #ifdef DKIOCGETBLOCKCOUNT	/* For Apple Darwin */
 	if (ioctl(fd, DKIOCGETBLOCKCOUNT, &size64) >= 0) {
-		if ((sizeof(*retblocks) < sizeof(unsigned long long))
-		    && ((size64 / (blocksize / 512)) > 0xFFFFFFFF)) {
-			rc = EFBIG;
-			goto out;
-		}
 		*retblocks = size64 / (blocksize / 512);
 		goto out;
 	}
@@ -188,11 +183,6 @@ errcode_t ext2fs_get_device_size(const char *file, int blocksize,
 #endif
 	if (valid_blkgetsize64 &&
 	    ioctl(fd, BLKGETSIZE64, &size64) >= 0) {
-		if ((sizeof(*retblocks) < sizeof(unsigned long long)) &&
-		    ((size64 / blocksize) > 0xFFFFFFFF)) {
-			rc = EFBIG;
-			goto out;
-		}
 		*retblocks = size64 / blocksize;
 		goto out;
 	}
@@ -253,11 +243,6 @@ errcode_t ext2fs_get_device_size(const char *file, int blocksize,
 		if (fstat(fd, &st) == 0)
 #endif
 			if (S_ISREG(st.st_mode)) {
-				if ((sizeof(*retblocks) < sizeof(unsigned long long)) &&
-				    ((st.st_size / blocksize) > 0xFFFFFFFF)) {
-					rc = EFBIG;
-					goto out;
-				}
 				*retblocks = st.st_size / blocksize;
 				goto out;
 			}
@@ -282,15 +267,25 @@ errcode_t ext2fs_get_device_size(const char *file, int blocksize,
 	}
 	valid_offset (fd, 0);
 	size64 = low + 1;
-	if ((sizeof(*retblocks) < sizeof(unsigned long long))
-	    && ((size64 / blocksize) > 0xFFFFFFFF)) {
-		rc = EFBIG;
-		goto out;
-	}
 	*retblocks = size64 / blocksize;
 out:
 	close(fd);
 	return rc;
+}
+
+errcode_t ext2fs_get_device_size(const char *file, int blocksize,
+				 blk_t *retblocks)
+{
+	errcode_t retval;
+	blk64_t	blocks;
+
+	retval = ext2fs_get_device_size2(file, blocksize, &blocks);
+	if (retval)
+		return retval;
+	if (blocks >= (1ULL << 32))
+		return EFBIG;
+	*retblocks = (blk_t) blocks;
+	return 0;
 }
 
 #endif /* WIN32 */
@@ -300,7 +295,7 @@ int main(int argc, char **argv)
 {
 	blk_t	blocks;
 	int	retval;
-	
+
 	if (argc < 2) {
 		fprintf(stderr, "Usage: %s device\n", argv[0]);
 		exit(1);

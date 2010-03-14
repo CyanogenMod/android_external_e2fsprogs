@@ -16,6 +16,14 @@ badblocks \- search a device for bad blocks
 .I blocks_at_once
 ]
 [
+.B \-e
+.I max_bad_blocks
+]
+[
+.B \-d
+.I read_delay_factor
+]
+[
 .B \-i
 .I input_file
 ]
@@ -35,7 +43,7 @@ badblocks \- search a device for bad blocks
 [
 .I last-block
 ] [
-.I start-block 
+.I first-block 
 ]
 .SH DESCRIPTION
 .B badblocks
@@ -46,7 +54,7 @@ is the special file corresponding to the device (e.g
 .I last-block
 is the last block to be checked; if it is not specified, the last block
 on the device is used as a default.
-.I start-block
+.I first-block
 is an optional parameter specifying the starting block number
 for the test, which allows the testing to start in the middle of the
 disk.  If it is not specified the first block on the disk is used as a default.
@@ -81,6 +89,19 @@ Specify the size of blocks in bytes.  The default is 1024.
 .BI \-c " number of blocks"
 is the number of blocks which are tested at a time.  The default is 64.
 .TP
+.BI \-e " max bad block count"
+Specify a maximum number of bad blocks before aborting the test.  The
+default is 0, meaning the test will continue until the end of the test
+range is reached.
+.TP
+.BI \-d " read delay factor"
+This parameter, if passed and non-zero, will cause bad blocks to sleep
+between reads if there were no errors encountered in the read
+operation; the delay will be calculated as a percentage of the time it
+took for the read operation to be performed. In other words, a value of 
+100 will cause each read to be delayed by the amount the previous read
+took, and a value of 200 by twice the amount.
+.TP
 .B \-f
 Normally, badblocks will refuse to do a read/write or a non-destructive
 test on a device which is mounted, since either can cause the system to
@@ -110,6 +131,12 @@ option of
 can be used to retrieve the list of blocks currently marked bad on
 an existing filesystem, in a format suitable for use with this option.
 .TP
+.B \-n
+Use non-destructive read-write mode.  By default only a non-destructive 
+read-only test is done.  This option must not be combined with the 
+.B \-w
+option, as they are mutually exclusive.
+.TP
 .BI \-o " output_file"
 Write the list of bad blocks to the specified file.  Without this option,
 .B badblocks
@@ -129,6 +156,15 @@ Default is 0, meaning
 .B badblocks
 will exit after the first pass.
 .TP
+.B \-s
+Show the progress of the scan by writing out rough percentage completion
+of the current badblocks pass over the disk.  Note that badblocks may do
+multiple test passes over the disk, in particular if the
+.B \-p
+or
+.B \-w
+option is requested by the user.
+.TP
 .BI \-t " test_pattern"
 Specify a test pattern to be read (and written) to disk blocks.   The
 .I test_pattern
@@ -146,16 +182,6 @@ numbers of blocks will fail verification.
 If multiple patterns
 are specified then all blocks will be tested with one pattern 
 before proceeding to the next pattern.
-.TP
-.B \-n
-Use non-destructive read-write mode.  By default only a non-destructive 
-read-only test is done.  This option must not be combined with the 
-.B \-w
-option, as they are mutually exclusive.
-.TP
-.B \-s
-Show the progress of the scan by writing out the block numbers as they
-are checked.
 .TP
 .B \-v
 Verbose mode.
@@ -183,6 +209,13 @@ This option erases data!  If you want to do write-mode testing on
 an existing file system, use the
 .B \-n
 option instead.  It is slower, but it will preserve your data.  
+.PP
+The
+.B \-e
+option will cause badblocks to output a possibly incomplete list of
+bad blocks. Therefore it is recommended to use it only when one wants
+to know if there are any bad blocks at all on the device, and not when
+the list of bad blocks is wanted.
 .SH AUTHOR
 .B badblocks
 was written by Remy Card <Remy.Card@linux.org>.  Current maintainer is

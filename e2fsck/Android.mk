@@ -50,6 +50,7 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES :=  \
 	e2fsck.c \
+	crc32.c \
 	dict.c \
 	super.c \
 	pass1.c \
@@ -69,7 +70,6 @@ LOCAL_SRC_FILES :=  \
 	ehandler.c \
 	problem.c \
 	message.c \
-	swapfs.c \
 	ea_refcount.c \
 	rehash.c \
 	region.c

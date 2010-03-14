@@ -1,6 +1,6 @@
 /*
  * newdir.c --- create a new directory block
- * 
+ *
  * Copyright (C) 1994, 1995 Theodore Ts'o.
  *
  * %Begin-Header%
@@ -41,7 +41,10 @@ errcode_t ext2fs_new_dir_block(ext2_filsys fs, ext2_ino_t dir_ino,
 		return retval;
 	memset(buf, 0, fs->blocksize);
 	dir = (struct ext2_dir_entry *) buf;
-	dir->rec_len = fs->blocksize;
+
+	retval = ext2fs_set_rec_len(fs, fs->blocksize, dir);
+	if (retval)
+		return retval;
 
 	if (dir_ino) {
 		if (fs->super->s_feature_incompat &
@@ -53,19 +56,21 @@ errcode_t ext2fs_new_dir_block(ext2_filsys fs, ext2_ino_t dir_ino,
 		dir->inode = dir_ino;
 		dir->name_len = 1 | filetype;
 		dir->name[0] = '.';
-		rec_len = dir->rec_len - EXT2_DIR_REC_LEN(1);
+		rec_len = fs->blocksize - EXT2_DIR_REC_LEN(1);
 		dir->rec_len = EXT2_DIR_REC_LEN(1);
 
 		/*
 		 * Set up entry for '..'
 		 */
 		dir = (struct ext2_dir_entry *) (buf + dir->rec_len);
-		dir->rec_len = rec_len;
+		retval = ext2fs_set_rec_len(fs, rec_len, dir);
+		if (retval)
+			return retval;
 		dir->inode = parent_ino;
 		dir->name_len = 2 | filetype;
 		dir->name[0] = '.';
 		dir->name[1] = '.';
-		
+
 	}
 	*block = buf;
 	return 0;

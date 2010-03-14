@@ -52,6 +52,12 @@ static void usage(const char *progname)
 	exit(1);
 }
 
+static void die(const char *msg)
+{
+	perror(msg);
+	exit(1);
+}
+
 static void create_daemon(void)
 {
 	pid_t pid;
@@ -72,20 +78,44 @@ static void create_daemon(void)
 	open("/dev/null", O_RDWR);
 	open("/dev/null", O_RDWR);
 
-	chdir("/");
+	if (chdir("/")) {}	/* Silence warn_unused_result warning */
 	(void) setsid();
 	euid = geteuid();
-	(void) setreuid(euid, euid);
+	if (setreuid(euid, euid) < 0)
+		die("setreuid");
 }
 
-static int read_all(int fd, char *buf, size_t count)
+static ssize_t read_all(int fd, char *buf, size_t count)
 {
 	ssize_t ret;
-	int c = 0;
+	ssize_t c = 0;
+	int tries = 0;
 
 	memset(buf, 0, count);
 	while (count > 0) {
 		ret = read(fd, buf, count);
+		if (ret <= 0) {
+			if ((errno == EAGAIN || errno == EINTR || ret == 0) &&
+			    (tries++ < 5))
+				continue;
+			return c ? c : -1;
+		}
+		if (ret > 0)
+			tries = 0;
+		count -= ret;
+		buf += ret;
+		c += ret;
+	}
+	return c;
+}
+
+static int write_all(int fd, char *buf, size_t count)
+{
+	ssize_t ret;
+	int c = 0;
+
+	while (count > 0) {
+		ret = write(fd, buf, count);
 		if (ret < 0) {
 			if ((errno == EAGAIN) || (errno == EINTR))
 				continue;
@@ -132,7 +162,8 @@ static int call_daemon(const char *socket_path, int op, char *buf,
 	}
 
 	srv_addr.sun_family = AF_UNIX;
-	strcpy(srv_addr.sun_path, socket_path);
+	strncpy(srv_addr.sun_path, socket_path, sizeof(srv_addr.sun_path));
+	srv_addr.sun_path[sizeof(srv_addr.sun_path)-1] = '\0';
 
 	if (connect(s, (const struct sockaddr *) &srv_addr,
 		    sizeof(struct sockaddr_un)) < 0) {
@@ -153,7 +184,7 @@ static int call_daemon(const char *socket_path, int op, char *buf,
 		op_len += sizeof(int);
 	}
 
-	ret = write(s, op_buf, op_len);
+	ret = write_all(s, op_buf, op_len);
 	if (ret < op_len) {
 		if (err_context)
 			*err_context = _("write");
@@ -198,12 +229,12 @@ static void server_loop(const char *socket_path, const char *pidfile_path,
 			int debug, int timeout, int quiet)
 {
 	struct sockaddr_un	my_addr, from_addr;
-	unsigned char		reply_buf[1024], *cp;
 	struct flock		fl;
 	socklen_t		fromlen;
 	int32_t			reply_len = 0;
 	uuid_t			uu;
 	mode_t			save_umask;
+	char			reply_buf[1024], *cp;
 	char			op, str[37];
 	int			i, s, ns, len, num;
 	int			fd_pidfile, ret;
@@ -249,10 +280,23 @@ static void server_loop(const char *socket_path, const char *pidfile_path,
 	}
 
 	/*
+	 * Make sure the socket isn't using fd numbers 0-2 to avoid it
+	 * getting closed by create_daemon()
+	 */
+	while (!debug && s <= 2) {
+		s = dup(s);
+		if (s < 0) {
+			perror("dup");
+			exit(1);
+		}
+	}
+
+	/*
 	 * Create the address we will be binding to.
 	 */
 	my_addr.sun_family = AF_UNIX;
-	strcpy(my_addr.sun_path, socket_path);
+	strncpy(my_addr.sun_path, socket_path, sizeof(my_addr.sun_path));
+	my_addr.sun_path[sizeof(my_addr.sun_path)-1] = '\0';
 	(void) unlink(socket_path);
 	save_umask = umask(0);
 	if (bind(s, (const struct sockaddr *) &my_addr,
@@ -282,9 +326,9 @@ static void server_loop(const char *socket_path, const char *pidfile_path,
 	signal(SIGALRM, terminate_intr);
 	signal(SIGPIPE, SIG_IGN);
 
-	sprintf(reply_buf, "%d\n", getpid());
-	ftruncate(fd_pidfile, 0);
-	write(fd_pidfile, reply_buf, strlen(reply_buf));
+	sprintf(reply_buf, "%8d\n", getpid());
+	if (ftruncate(fd_pidfile, 0)) {} /* Silence warn_unused_result */
+	write_all(fd_pidfile, reply_buf, strlen(reply_buf));
 	if (fd_pidfile > 1)
 		close(fd_pidfile); /* Unlock the pid file */
 
@@ -320,12 +364,12 @@ static void server_loop(const char *socket_path, const char *pidfile_path,
 
 		switch(op) {
 		case UUIDD_OP_GETPID:
-			sprintf((char *) reply_buf, "%d", getpid());
-			reply_len = strlen((char *) reply_buf)+1;
+			sprintf(reply_buf, "%d", getpid());
+			reply_len = strlen(reply_buf)+1;
 			break;
 		case UUIDD_OP_GET_MAXOP:
-			sprintf((char *) reply_buf, "%d", UUIDD_MAX_OP);
-			reply_len = strlen((char *) reply_buf)+1;
+			sprintf(reply_buf, "%d", UUIDD_MAX_OP);
+			reply_len = strlen(reply_buf)+1;
 			break;
 		case UUIDD_OP_TIME_UUID:
 			num = 1;
@@ -366,12 +410,13 @@ static void server_loop(const char *socket_path, const char *pidfile_path,
 				num = 1000;
 			if (num*16 > (int) (sizeof(reply_buf)-sizeof(num)))
 				num = (sizeof(reply_buf)-sizeof(num)) / 16;
-			uuid__generate_random(reply_buf+sizeof(num), &num);
+			uuid__generate_random((unsigned char *) reply_buf +
+					      sizeof(num), &num);
 			if (debug) {
 				printf(_("Generated %d UUID's:\n"), num);
 				for (i=0, cp=reply_buf+sizeof(num);
 				     i < num; i++, cp+=16) {
-					uuid_unparse(cp, str);
+					uuid_unparse((unsigned char *)cp, str);
 					printf("\t%s\n", str);
 				}
 			}
@@ -383,8 +428,8 @@ static void server_loop(const char *socket_path, const char *pidfile_path,
 				printf(_("Invalid operation %d\n"), op);
 			goto shutdown_socket;
 		}
-		write(ns, &reply_len, sizeof(reply_len));
-		write(ns, reply_buf, reply_len);
+		write_all(ns, (char *) &reply_len, sizeof(reply_len));
+		write_all(ns, reply_buf, reply_len);
 	shutdown_socket:
 		close(ns);
 	}
@@ -415,11 +460,11 @@ int main(int argc, char **argv)
 		switch (c) {
 		case 'd':
 			debug++;
-			drop_privs++;
+			drop_privs = 1;
 			break;
 		case 'k':
 			do_kill++;
-			drop_privs++;
+			drop_privs = 1;
 			break;
 		case 'n':
 			num = strtol(optarg, &tmp, 0);
@@ -429,18 +474,18 @@ int main(int argc, char **argv)
 			}
 		case 'p':
 			pidfile_path = optarg;
-			drop_privs++;
+			drop_privs = 1;
 			break;
 		case 'q':
 			quiet++;
 			break;
 		case 's':
 			socket_path = optarg;
-			drop_privs++;
+			drop_privs = 1;
 			break;
 		case 't':
 			do_type = UUIDD_OP_TIME_UUID;
-			drop_privs++;
+			drop_privs = 1;
 			break;
 		case 'T':
 			timeout = strtol(optarg, &tmp, 0);
@@ -451,7 +496,7 @@ int main(int argc, char **argv)
 			break;
 		case 'r':
 			do_type = UUIDD_OP_RANDOM_UUID;
-			drop_privs++;
+			drop_privs = 1;
 			break;
 		default:
 			usage(argv[0]);
@@ -460,15 +505,20 @@ int main(int argc, char **argv)
 	uid = getuid();
 	if (uid && drop_privs) {
 		gid = getgid();
-#ifdef HAVE_SETRESUID
-		setresuid(uid, uid, uid);
-#else
-		setreuid(uid, uid);
-#endif
 #ifdef HAVE_SETRESGID
-		setresgid(gid, gid, gid);
+		if (setresgid(gid, gid, gid) < 0)
+			die("setresgid");
 #else
-		setregid(gid, gid);
+		if (setregid(gid, gid) < 0)
+			die("setregid");
+#endif
+
+#ifdef HAVE_SETRESUID
+		if (setresuid(uid, uid, uid) < 0)
+			die("setresuid");
+#else
+		if (setreuid(uid, uid) < 0)
+			die("setreuid");
 #endif
 	}
 	if (num && do_type) {

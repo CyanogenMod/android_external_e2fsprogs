@@ -1,7 +1,7 @@
 /*
  * util.h --- header file defining prototypes for helper functions
  * used by tune2fs and mke2fs
- * 
+ *
  * Copyright 2000 by Theodore Ts'o.
  *
  * %Begin-Header%
@@ -22,5 +22,5 @@ extern void proceed_question(void);
 extern void check_plausibility(const char *device);
 extern void parse_journal_opts(const char *opts);
 extern void check_mount(const char *device, int force, const char *type);
-extern int figure_journal_size(int size, ext2_filsys fs);
+extern unsigned int figure_journal_size(int size, ext2_filsys fs);
 extern void print_check_message(ext2_filsys fs);

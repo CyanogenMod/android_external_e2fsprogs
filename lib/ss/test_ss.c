@@ -1,6 +1,6 @@
 /*
  * test_ss.c
- * 
+ *
  * Copyright 1987, 1988 by MIT Student Information Processing Board
  *
  * Permission to use, copy, modify, and distribute this software and
@@ -11,7 +11,7 @@
  * M.I.T. S.I.P.B. make no representations about the suitability of
  * this software for any purpose.  It is provided "as is" without
  * express or implied warranty.
- 
+
  */
 
 #include <unistd.h>
@@ -49,6 +49,8 @@ static int source_file(const char *cmd_file, int sci_idx)
 			exit(1);
 		}
 	}
+	fflush(stdout);
+	fflush(stderr);
 	setbuf(stdout, NULL);
 	setbuf(stderr, NULL);
 	while (!feof(f)) {
@@ -85,7 +87,6 @@ int main(int argc, char **argv)
 	char		*cmd_file = 0;
 	int sci_idx;
 	int exit_status = 0;
-	const char	*usage = "Usage: test_ss [-R request] [-f cmd_file]";
 
 	while ((c = getopt (argc, argv, "wR:f:")) != EOF) {
 		switch (c) {
@@ -96,7 +97,8 @@ int main(int argc, char **argv)
 			cmd_file = optarg;
 			break;
 		default:
-			com_err(argv[0], 0, usage);
+			com_err(argv[0], 0, "Usage: test_ss [-R request] "
+				"[-f cmd_file]");
 			exit(1);
 		}
 	}

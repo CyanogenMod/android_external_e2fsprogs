@@ -19,7 +19,7 @@ request do_features, "Set/print superblock features",
 request do_dirty_filesys, "Mark the filesystem as dirty",
 	dirty_filesys, dirty;
 
-request do_init_filesys, "Initalize a filesystem (DESTROYS DATA)",
+request do_init_filesys, "Initialize a filesystem (DESTROYS DATA)",
 	init_filesys;
 
 request do_show_super_stats, "Show superblock statistics",
@@ -42,6 +42,9 @@ request do_list_dir, "List directory",
 
 request do_stat, "Show inode information ",
 	show_inode_info, stat;
+
+request do_dump_extents, "Dump extents information ",
+	dump_extents, extents, ex;
 
 request do_link, "Create directory link",
 	link, ln;
@@ -153,6 +156,9 @@ request	do_dump_unused, "Dump unused blocks",
 
 request do_set_current_time, "Set current time to use when setting filesystme fields",
 	set_current_time;
+
+request do_supported_features, "Print features supported by this version of e2fsprogs",
+	supported_features;
 
 end;
 

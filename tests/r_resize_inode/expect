@@ -23,7 +23,7 @@ Errors behavior:          Continue
 Filesystem OS type:       Linux
 Inode count:              16384
 Block count:              65536
-Reserved block count:     2621
+Reserved block count:     3276
 Free blocks:              61023
 Free inodes:              16373
 First block:              1
@@ -39,8 +39,8 @@ Check interval:           15552000 (6 months)
 Reserved blocks uid:      0
 Reserved blocks gid:      0
 First inode:              11
-Inode size:		  128
-Default directory hash:   tea
+Inode size:	          128
+Default directory hash:   half_md4
 
 
 Group 0: (Blocks 1-1024)
@@ -471,7 +471,7 @@ Errors behavior:          Continue
 Filesystem OS type:       Linux
 Inode count:              4096
 Block count:              16384
-Reserved block count:     655
+Reserved block count:     819
 Free blocks:              14277
 Free inodes:              4085
 First block:              1
@@ -487,8 +487,8 @@ Check interval:           15552000 (6 months)
 Reserved blocks uid:      0
 Reserved blocks gid:      0
 First inode:              11
-Inode size:		  128
-Default directory hash:   tea
+Inode size:	          128
+Default directory hash:   half_md4
 
 
 Group 0: (Blocks 1-1024)
@@ -628,7 +628,7 @@ Errors behavior:          Continue
 Filesystem OS type:       Linux
 Inode count:              41472
 Block count:              165536
-Reserved block count:     4966
+Reserved block count:     8274
 Free blocks:              157175
 Free inodes:              41461
 First block:              1
@@ -644,8 +644,8 @@ Check interval:           15552000 (6 months)
 Reserved blocks uid:      0
 Reserved blocks gid:      0
 First inode:              11
-Inode size:		  128
-Default directory hash:   tea
+Inode size:	          128
+Default directory hash:   half_md4
 
 
 Group 0: (Blocks 1-1024)

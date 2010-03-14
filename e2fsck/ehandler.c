@@ -1,7 +1,7 @@
 /*
  * ehandler.c --- handle bad block errors which come up during the
  * 	course of an e2fsck session.
- * 
+ *
  * Copyright (C) 1994 Theodore Ts'o.  This file may be redistributed
  * under the terms of the GNU Public License.
  */
@@ -33,7 +33,8 @@ static errcode_t e2fsck_handle_read_error(io_channel channel,
 	e2fsck_t ctx;
 
 	ctx = (e2fsck_t) fs->priv_data;
-
+	if (ctx->flags & E2F_FLAG_EXITING)
+		return 0;
 	/*
 	 * If more than one block was read, try reading each block
 	 * separately.  We could use the actual bytes read to figure
@@ -77,8 +78,10 @@ static errcode_t e2fsck_handle_write_error(io_channel channel,
 	const char	*p;
 	ext2_filsys fs = (ext2_filsys) channel->app_data;
 	e2fsck_t ctx;
-	
+
 	ctx = (e2fsck_t) fs->priv_data;
+	if (ctx->flags & E2F_FLAG_EXITING)
+		return 0;
 
 	/*
 	 * If more than one block was written, try writing each block
@@ -95,7 +98,7 @@ static errcode_t e2fsck_handle_write_error(io_channel channel,
 		}
 		return 0;
 	}
-	
+
 	if (operation)
 		printf(_("Error writing block %lu (%s) while %s.  "), block,
 		       error_message(error), operation);

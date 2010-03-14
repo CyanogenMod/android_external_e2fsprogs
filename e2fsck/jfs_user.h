@@ -15,7 +15,6 @@
 #include "e2fsck.h"
 
 struct buffer_head {
-	char		b_data[8192];
 	e2fsck_t	b_ctx;
 	io_channel 	b_io;
 	int	 	b_size;
@@ -23,6 +22,7 @@ struct buffer_head {
 	int	 	b_dirty;
 	int	 	b_uptodate;
 	int	 	b_err;
+	char		b_data[1024];
 };
 
 struct inode {
@@ -45,12 +45,12 @@ typedef struct kdev_s *kdev_t;
 #define unlock_buffer(bh) do {} while(0)
 #define buffer_req(bh) 1
 #define do_readahead(journal, start) do {} while(0)
-	
+
 extern e2fsck_t e2fsck_global_ctx;  /* Try your very best not to use this! */
 
 typedef struct {
 	int	object_length;
-} kmem_cache_t;
+} lkmem_cache_t;
 
 #define kmem_cache_alloc(cache,flags) malloc((cache)->object_length)
 #define kmem_cache_free(cache,obj) free(obj)
@@ -59,13 +59,23 @@ typedef struct {
 #define kmalloc(len,flags) malloc(len)
 #define kfree(p) free(p)
 
+#define cond_resched()	do { } while (0)
+
+#define __init
+
+/*
+ * Now pull in the real linux/jfs.h definitions.
+ */
+#include <ext2fs/kernel-jbd.h>
+
 /*
  * We use the standard libext2fs portability tricks for inline
- * functions.  
+ * functions.
  */
-extern kmem_cache_t * do_cache_create(int len);
-extern void do_cache_destroy(kmem_cache_t *cache);
-	
+extern lkmem_cache_t * do_cache_create(int len);
+extern void do_cache_destroy(lkmem_cache_t *cache);
+extern size_t journal_tag_bytes(journal_t *journal);
+
 #if (defined(E2FSCK_INCLUDE_INLINE_FUNCS) || !defined(NO_INLINE_FUNCS))
 #ifdef E2FSCK_INCLUDE_INLINE_FUNCS
 #define _INLINE_ extern
@@ -77,28 +87,33 @@ extern void do_cache_destroy(kmem_cache_t *cache);
 #endif
 #endif
 
-_INLINE_ kmem_cache_t * do_cache_create(int len)
+_INLINE_ lkmem_cache_t * do_cache_create(int len)
 {
-	kmem_cache_t *new_cache;
+	lkmem_cache_t *new_cache;
 	new_cache = malloc(sizeof(*new_cache));
 	if (new_cache)
 		new_cache->object_length = len;
 	return new_cache;
 }
 
-_INLINE_ void do_cache_destroy(kmem_cache_t *cache)
+_INLINE_ void do_cache_destroy(lkmem_cache_t *cache)
 {
 	free(cache);
 }
-#undef _INLINE_
-#endif
-
-#define __init
 
 /*
- * Now pull in the real linux/jfs.h definitions.
+ * helper functions to deal with 32 or 64bit block numbers.
  */
-#include <ext2fs/kernel-jbd.h>
+_INLINE_ size_t journal_tag_bytes(journal_t *journal)
+{
+	if (JFS_HAS_INCOMPAT_FEATURE(journal, JFS_FEATURE_INCOMPAT_64BIT))
+		return JBD_TAG_SIZE64;
+	else
+		return JBD_TAG_SIZE32;
+}
+
+#undef _INLINE_
+#endif
 
 /*
  * Kernel compatibility functions are defined in journal.c
