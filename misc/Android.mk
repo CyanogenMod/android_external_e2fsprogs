@@ -13,7 +13,7 @@ LOCAL_C_INCLUDES := \
 	external/e2fsprogs/lib \
 	external/e2fsprogs/e2fsck
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -54,6 +54,12 @@ LOCAL_SYSTEM_SHARED_LIBRARIES := \
 
 include $(BUILD_EXECUTABLE)
 
+include $(CLEAR_VARS)
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE := mke2fs.conf
+LOCAL_SRC_FILES := mke2fs.conf
+include $(BUILD_PREBUILT)
+
 ###########################################################################
 # Build tune2fs
 #
@@ -67,7 +73,7 @@ LOCAL_C_INCLUDES := \
 	external/e2fsprogs/lib \
 	external/e2fsprogs/e2fsck
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -114,7 +120,7 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES := \
 	external/e2fsprogs/lib
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -148,3 +154,4 @@ LOCAL_SYSTEM_SHARED_LIBRARIES := \
 	libc
 
 include $(BUILD_EXECUTABLE)
+
