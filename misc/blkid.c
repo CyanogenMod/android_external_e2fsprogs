@@ -17,7 +17,11 @@
 #include <termios.h>
 #endif
 #ifdef HAVE_TERMIO_H
+#ifdef __BIONIC__
+#include <termios.h>
+#else
 #include <termio.h>
+#endif
 #endif
 #ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>

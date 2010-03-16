@@ -10,7 +10,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_C_INCLUDES := external/e2fsprogs/lib
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
