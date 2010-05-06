@@ -105,7 +105,6 @@ extern char *blkid_strdup(const char *s);
 extern char *blkid_strndup(const char *s, const int length);
 
 #define BLKID_CACHE_FILE "/etc/blkid.tab"
-extern const char *blkid_devdirs[];
 
 #define BLKID_ERR_IO	 5
 #define BLKID_ERR_PROC	 9
@@ -152,6 +151,13 @@ extern int	blkid_debug_mask;
 extern void blkid_debug_dump_dev(blkid_dev dev);
 extern void blkid_debug_dump_tag(blkid_tag tag);
 #endif
+
+/* devno.c */
+struct dir_list {
+	char	*name;
+	struct dir_list *next;
+};
+extern void blkid__scan_dir(char *, dev_t, struct dir_list **, char **);
 
 /* lseek.c */
 extern blkid_loff_t blkid_llseek(int fd, blkid_loff_t offset, int whence);

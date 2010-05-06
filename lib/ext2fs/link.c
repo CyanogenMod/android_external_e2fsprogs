@@ -1,6 +1,6 @@
 /*
  * link.c --- create links in a ext2fs directory
- * 
+ *
  * Copyright (C) 1993, 1994 Theodore Ts'o.
  *
  * %Begin-Header%
@@ -19,13 +19,16 @@
 #include "ext2fs.h"
 
 struct link_struct  {
+	ext2_filsys	fs;
 	const char	*name;
 	int		namelen;
 	ext2_ino_t	inode;
 	int		flags;
 	int		done;
+	unsigned int	blocksize;
+	errcode_t	err;
 	struct ext2_super_block *sb;
-};	
+};
 
 static int link_proc(struct ext2_dir_entry *dirent,
 		     int	offset,
@@ -35,20 +38,27 @@ static int link_proc(struct ext2_dir_entry *dirent,
 {
 	struct link_struct *ls = (struct link_struct *) priv_data;
 	struct ext2_dir_entry *next;
-	int rec_len, min_rec_len;
+	unsigned int rec_len, min_rec_len, curr_rec_len;
 	int ret = 0;
 
 	rec_len = EXT2_DIR_REC_LEN(ls->namelen);
+
+	ls->err = ext2fs_get_rec_len(ls->fs, dirent, &curr_rec_len);
+	if (ls->err)
+		return DIRENT_ABORT;
 
 	/*
 	 * See if the following directory entry (if any) is unused;
 	 * if so, absorb it into this one.
 	 */
-	next = (struct ext2_dir_entry *) (buf + offset + dirent->rec_len);
-	if ((offset + dirent->rec_len < blocksize - 8) &&
+	next = (struct ext2_dir_entry *) (buf + offset + curr_rec_len);
+	if ((offset + curr_rec_len < blocksize - 8) &&
 	    (next->inode == 0) &&
-	    (offset + dirent->rec_len + next->rec_len <= blocksize)) {
-		dirent->rec_len += next->rec_len;
+	    (offset + curr_rec_len + next->rec_len <= blocksize)) {
+		curr_rec_len += next->rec_len;
+		ls->err = ext2fs_set_rec_len(ls->fs, curr_rec_len, dirent);
+		if (ls->err)
+			return DIRENT_ABORT;
 		ret = DIRENT_CHANGED;
 	}
 
@@ -59,15 +69,19 @@ static int link_proc(struct ext2_dir_entry *dirent,
 	 */
 	if (dirent->inode) {
 		min_rec_len = EXT2_DIR_REC_LEN(dirent->name_len & 0xFF);
-		if (dirent->rec_len < (min_rec_len + rec_len))
+		if (curr_rec_len < (min_rec_len + rec_len))
 			return ret;
-		rec_len = dirent->rec_len - min_rec_len;
-		dirent->rec_len = min_rec_len;
+		rec_len = curr_rec_len - min_rec_len;
+		ls->err = ext2fs_set_rec_len(ls->fs, min_rec_len, dirent);
+		if (ls->err)
+			return DIRENT_ABORT;
 		next = (struct ext2_dir_entry *) (buf + offset +
 						  dirent->rec_len);
 		next->inode = 0;
 		next->name_len = 0;
-		next->rec_len = rec_len;
+		ls->err = ext2fs_set_rec_len(ls->fs, rec_len, next);
+		if (ls->err)
+			return DIRENT_ABORT;
 		return DIRENT_CHANGED;
 	}
 
@@ -75,7 +89,7 @@ static int link_proc(struct ext2_dir_entry *dirent,
 	 * If we get this far, then the directory entry is not used.
 	 * See if we can fit the request entry in.  If so, do it.
 	 */
-	if (dirent->rec_len < rec_len)
+	if (curr_rec_len < rec_len)
 		return ret;
 	dirent->inode = ls->inode;
 	dirent->name_len = ls->namelen;
@@ -94,7 +108,7 @@ static int link_proc(struct ext2_dir_entry *dirent,
 #ifdef __TURBOC__
  #pragma argsused
 #endif
-errcode_t ext2fs_link(ext2_filsys fs, ext2_ino_t dir, const char *name, 
+errcode_t ext2fs_link(ext2_filsys fs, ext2_ino_t dir, const char *name,
 		      ext2_ino_t ino, int flags)
 {
 	errcode_t		retval;
@@ -106,17 +120,22 @@ errcode_t ext2fs_link(ext2_filsys fs, ext2_ino_t dir, const char *name,
 	if (!(fs->flags & EXT2_FLAG_RW))
 		return EXT2_ET_RO_FILSYS;
 
+	ls.fs = fs;
 	ls.name = name;
 	ls.namelen = name ? strlen(name) : 0;
 	ls.inode = ino;
 	ls.flags = flags;
 	ls.done = 0;
 	ls.sb = fs->super;
+	ls.blocksize = fs->blocksize;
+	ls.err = 0;
 
 	retval = ext2fs_dir_iterate(fs, dir, DIRENT_FLAG_INCLUDE_EMPTY,
 				    0, link_proc, &ls);
 	if (retval)
 		return retval;
+	if (ls.err)
+		return ls.err;
 
 	if (!ls.done)
 		return EXT2_ET_DIR_NO_SPACE;

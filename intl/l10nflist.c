@@ -58,6 +58,7 @@
 # endif
 #else
 # ifndef HAVE_STPCPY
+#define stpcpy(dest, src) my_stpcpy(dest, src)
 static char *stpcpy (char *dest, const char *src);
 # endif
 #endif
@@ -164,7 +165,7 @@ pop (int x)
   return x;
 }
 
-
+
 struct loaded_l10nfile *
 _nl_make_l10nflist (struct loaded_l10nfile **l10nfile_list,
 		    const char *dirlist, size_t dirlist_len,
@@ -359,7 +360,7 @@ _nl_make_l10nflist (struct loaded_l10nfile **l10nfile_list,
 
   return retval;
 }
-
+
 /* Normalize codeset name.  There is no standard for the codeset
    names.  Normalization allows the user to use any of the common
    names.  The return value is dynamically allocated and has to be

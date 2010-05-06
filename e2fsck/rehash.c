@@ -1,13 +1,13 @@
 /*
  * rehash.c --- rebuild hash tree directories
- * 
+ *
  * Copyright (C) 2002 Theodore Ts'o
  *
  * %Begin-Header%
  * This file may be redistributed under the terms of the GNU Public
  * License.
  * %End-Header%
- * 
+ *
  * This algorithm is designed for simplicity of implementation and to
  * pack the directory as much as possible.  It however requires twice
  * as much memory as the size of the directory.  The maximum size
@@ -36,7 +36,7 @@
  *    --------------------------------------------------------
  *                  ^ ptr    ^ptr
  *                tail new   head old
- * 
+ *
  * This is going to be a pain in the tuckus to implement, and will
  * require a lot more disk accesses.  So I'm going to skip it for now;
  * it's only really going to be an issue for really, really big
@@ -88,9 +88,9 @@ static int fill_dir_block(ext2_filsys fs,
 	struct hash_entry 	*new_array, *ent;
 	struct ext2_dir_entry 	*dirent;
 	char			*dir;
-	unsigned int		offset, dir_offset;
+	unsigned int		offset, dir_offset, rec_len;
 	int			hash_alg;
-	
+
 	if (blockcnt < 0)
 		return 0;
 
@@ -103,7 +103,7 @@ static int fill_dir_block(ext2_filsys fs,
 	if (HOLE_BLKADDR(*block_nr)) {
 		memset(dir, 0, fs->blocksize);
 		dirent = (struct ext2_dir_entry *) dir;
-		dirent->rec_len = fs->blocksize;
+		(void) ext2fs_set_rec_len(fs, fs->blocksize, dirent);
 	} else {
 		fd->err = ext2fs_read_dir_block(fs, *block_nr, dir);
 		if (fd->err)
@@ -117,14 +117,15 @@ static int fill_dir_block(ext2_filsys fs,
 	dir_offset = 0;
 	while (dir_offset < fs->blocksize) {
 		dirent = (struct ext2_dir_entry *) (dir + dir_offset);
-		if (((dir_offset + dirent->rec_len) > fs->blocksize) ||
-		    (dirent->rec_len < 8) ||
-		    ((dirent->rec_len % 4) != 0) ||
-		    (((dirent->name_len & 0xFF)+8) > dirent->rec_len)) {
+		(void) ext2fs_get_rec_len(fs, dirent, &rec_len);
+		if (((dir_offset + rec_len) > fs->blocksize) ||
+		    (rec_len < 8) ||
+		    ((rec_len % 4) != 0) ||
+		    (((dirent->name_len & 0xFF)+8) > rec_len)) {
 			fd->err = EXT2_ET_DIR_CORRUPTED;
 			return BLOCK_ABORT;
 		}
-		dir_offset += dirent->rec_len;
+		dir_offset += rec_len;
 		if (dirent->inode == 0)
 			continue;
 		if (!fd->compress && ((dirent->name_len&0xFF) == 1) &&
@@ -160,7 +161,7 @@ static int fill_dir_block(ext2_filsys fs,
 				return BLOCK_ABORT;
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -203,7 +204,7 @@ static EXT2_QSORT_TYPE hash_cmp(const void *a, const void *b)
 	const struct hash_entry *he_a = (const struct hash_entry *) a;
 	const struct hash_entry *he_b = (const struct hash_entry *) b;
 	int	ret;
-	
+
 	if (he_a->hash > he_b->hash)
 		ret = 1;
 	else if (he_a->hash < he_b->hash)
@@ -219,7 +220,7 @@ static EXT2_QSORT_TYPE hash_cmp(const void *a, const void *b)
 	return ret;
 }
 
-static errcode_t alloc_size_dir(ext2_filsys fs, struct out_dir *outdir, 
+static errcode_t alloc_size_dir(ext2_filsys fs, struct out_dir *outdir,
 				int blocks)
 {
 	void			*new_mem;
@@ -245,10 +246,8 @@ static errcode_t alloc_size_dir(ext2_filsys fs, struct out_dir *outdir,
 
 static void free_out_dir(struct out_dir *outdir)
 {
-	if (outdir->buf)
-		free(outdir->buf);
-	if (outdir->hashes)
-		free(outdir->hashes);
+	free(outdir->buf);
+	free(outdir->hashes);
 	outdir->max = 0;
 	outdir->num =0;
 }
@@ -278,7 +277,7 @@ static void mutate_name(char *str, __u16 *len)
 {
 	int	i;
 	__u16	l = *len & 0xFF, h = *len & 0xff00;
-	
+
 	/*
 	 * First check to see if it looks the name has been mutated
 	 * already
@@ -321,7 +320,7 @@ static void mutate_name(char *str, __u16 *len)
 		} else {
 			if (str[0] == '~')
 				str[0] = 'a';
-			else 
+			else
 				str[0]++;
 		}
 		break;
@@ -339,7 +338,7 @@ static int duplicate_search_and_fix(e2fsck_t ctx, ext2_filsys fs,
 	char			new_name[256];
 	__u16			new_len;
 	int			hash_alg;
-	
+
 	clear_problem_context(&pctx);
 	pctx.ino = ino;
 
@@ -376,7 +375,7 @@ static int duplicate_search_and_fix(e2fsck_t ctx, ext2_filsys fs,
 				     new_len & 0xFF)))
 				continue;
 			mutate_name(new_name, &new_len);
-			
+
 			j = -1;
 		}
 		new_name[new_len & 0xFF] = 0;
@@ -395,18 +394,29 @@ static int duplicate_search_and_fix(e2fsck_t ctx, ext2_filsys fs,
 }
 
 
-static errcode_t copy_dir_entries(ext2_filsys fs,
+static errcode_t copy_dir_entries(e2fsck_t ctx,
 				  struct fill_dir_struct *fd,
 				  struct out_dir *outdir)
 {
+	ext2_filsys 		fs = ctx->fs;
 	errcode_t		retval;
 	char			*block_start;
 	struct hash_entry 	*ent;
 	struct ext2_dir_entry	*dirent;
-	int			i, rec_len, left;
+	unsigned int		rec_len, prev_rec_len;
+	int			i, left;
 	ext2_dirhash_t		prev_hash;
-	int			offset;
-	
+	int			offset, slack;
+
+	if (ctx->htree_slack_percentage == 255) {
+		profile_get_uint(ctx->profile, "options",
+				 "indexed_dir_slack_percentage",
+				 0, 20,
+				 &ctx->htree_slack_percentage);
+		if (ctx->htree_slack_percentage > 100)
+			ctx->htree_slack_percentage = 20;
+	}
+
 	outdir->max = 0;
 	retval = alloc_size_dir(fs, outdir,
 				(fd->dir_size / fs->blocksize) + 2);
@@ -419,15 +429,24 @@ static errcode_t copy_dir_entries(ext2_filsys fs,
 	if ((retval = get_next_block(fs, outdir, &block_start)))
 		return retval;
 	dirent = (struct ext2_dir_entry *) block_start;
+	prev_rec_len = 0;
 	left = fs->blocksize;
+	slack = fd->compress ? 12 :
+		(fs->blocksize * ctx->htree_slack_percentage)/100;
+	if (slack < 12)
+		slack = 12;
 	for (i=0; i < fd->num_array; i++) {
 		ent = fd->harray + i;
 		if (ent->dir->inode == 0)
 			continue;
 		rec_len = EXT2_DIR_REC_LEN(ent->dir->name_len & 0xFF);
 		if (rec_len > left) {
-			if (left)
-				dirent->rec_len += left;
+			if (left) {
+				left += prev_rec_len;
+				retval = ext2fs_set_rec_len(fs, left, dirent);
+				if (retval)
+					return retval;
+			}
 			if ((retval = get_next_block(fs, outdir,
 						      &block_start)))
 				return retval;
@@ -443,21 +462,27 @@ static errcode_t copy_dir_entries(ext2_filsys fs,
 		}
 		dirent->inode = ent->dir->inode;
 		dirent->name_len = ent->dir->name_len;
-		dirent->rec_len = rec_len;
+		retval = ext2fs_set_rec_len(fs, rec_len, dirent);
+		if (retval)
+			return retval;
+		prev_rec_len = rec_len;
 		memcpy(dirent->name, ent->dir->name, dirent->name_len & 0xFF);
 		offset += rec_len;
 		left -= rec_len;
-		if (left < 12) {
-			dirent->rec_len += left;
+		if (left < slack) {
+			prev_rec_len += left;
+			retval = ext2fs_set_rec_len(fs, prev_rec_len, dirent);
+			if (retval)
+				return retval;
 			offset += left;
 			left = 0;
 		}
 		prev_hash = ent->hash;
 	}
 	if (left)
-		dirent->rec_len += left;
+		retval = ext2fs_set_rec_len(fs, rec_len + left, dirent);
 
-	return 0;
+	return retval;
 }
 
 
@@ -471,7 +496,7 @@ static struct ext2_dx_root_info *set_root_node(ext2_filsys fs, char *buf,
 
 	if (fs->super->s_feature_incompat & EXT2_FEATURE_INCOMPAT_FILETYPE)
 		filetype = EXT2_FT_DIR << 8;
-	
+
 	memset(buf, 0, fs->blocksize);
 	dir = (struct ext2_dir_entry *) buf;
 	dir->inode = ino;
@@ -484,7 +509,7 @@ static struct ext2_dx_root_info *set_root_node(ext2_filsys fs, char *buf,
 	dir->name[1] = '.';
 	dir->name_len = 2 | filetype;
 	dir->rec_len = fs->blocksize - 12;
-	
+
 	root = (struct ext2_dx_root_info *) (buf+24);
 	root->reserved_zero = 0;
 	root->hash_version = fs->super->s_def_hash_version;
@@ -508,8 +533,8 @@ static struct ext2_dx_entry *set_int_node(ext2_filsys fs, char *buf)
 	memset(buf, 0, fs->blocksize);
 	dir = (struct ext2_dir_entry *) buf;
 	dir->inode = 0;
-	dir->rec_len = fs->blocksize;
-	
+	(void) ext2fs_set_rec_len(fs, fs->blocksize, dir);
+
 	limits = (struct ext2_dx_countlimit *) (buf+8);
 	limits->limit = (fs->blocksize - 8) / sizeof(struct ext2_dx_entry);
 	limits->count = 0;
@@ -533,7 +558,7 @@ static errcode_t calculate_tree(ext2_filsys fs,
 	char				* block_start;
 	int				i, c1, c2, nblks;
 	int				limit_offset, root_offset;
-	
+
 	root_info = set_root_node(fs, outdir->buf, ino, parent);
 	root_offset = limit_offset = ((char *) root_info - outdir->buf) +
 		root_info->info_length;
@@ -562,7 +587,7 @@ static errcode_t calculate_tree(ext2_filsys fs,
 				return ENOSPC;
 			if (c2 == 0) {
 				if (limit)
-					limit->limit = limit->count = 
+					limit->limit = limit->count =
 		ext2fs_cpu_to_le16(limit->limit);
 				root = (struct ext2_dx_entry *)
 					(outdir->buf + root_offset);
@@ -610,7 +635,7 @@ static int write_dir_block(ext2_filsys fs,
 			   blk_t	*block_nr,
 			   e2_blkcnt_t blockcnt,
 			   blk_t ref_block EXT2FS_ATTR((unused)),
-			   int ref_offset EXT2FS_ATTR((unused)), 
+			   int ref_offset EXT2FS_ATTR((unused)),
 			   void *priv_data)
 {
 	struct write_dir_struct	*wd = (struct write_dir_struct *) priv_data;
@@ -668,7 +693,7 @@ static errcode_t write_directory(e2fsck_t ctx, ext2_filsys fs,
 	else
 		inode.i_flags |= EXT2_INDEX_FL;
 	inode.i_size = outdir->num * fs->blocksize;
-	inode.i_blocks -= (fs->blocksize / 512) * wd.cleared;
+	ext2fs_iblk_sub_blocks(fs, &inode, wd.cleared);
 	e2fsck_write_inode(ctx, ino, &inode, "rehash_dir");
 
 	return 0;
@@ -682,7 +707,7 @@ errcode_t e2fsck_rehash_dir(e2fsck_t ctx, ext2_ino_t ino)
 	char			*dir_buf = 0;
 	struct fill_dir_struct	fd;
 	struct out_dir		outdir;
-	
+
 	outdir.max = outdir.num = 0;
 	outdir.buf = 0;
 	outdir.hashes = 0;
@@ -711,12 +736,24 @@ errcode_t e2fsck_rehash_dir(e2fsck_t ctx, ext2_ino_t ino)
 		fd.compress = 1;
 	fd.parent = 0;
 
+retry_nohash:
 	/* Read in the entire directory into memory */
 	retval = ext2fs_block_iterate2(fs, ino, 0, 0,
 				       fill_dir_block, &fd);
 	if (fd.err) {
 		retval = fd.err;
 		goto errout;
+	}
+
+	/* 
+	 * If the entries read are less than a block, then don't index
+	 * the directory
+	 */
+	if (!fd.compress && (fd.dir_size < (fs->blocksize - 24))) {
+		fd.compress = 1;
+		fd.dir_size = 0;
+		fd.num_array = 0;
+		goto retry_nohash;
 	}
 
 #if 0
@@ -727,11 +764,11 @@ errcode_t e2fsck_rehash_dir(e2fsck_t ctx, ext2_ino_t ino)
 	/* Sort the list */
 resort:
 	if (fd.compress)
-		qsort(fd.harray+2, fd.num_array-2,
-		      sizeof(struct hash_entry), ino_cmp);
+		qsort(fd.harray+2, fd.num_array-2, sizeof(struct hash_entry),
+		      hash_cmp);
 	else
-		qsort(fd.harray, fd.num_array,
-		      sizeof(struct hash_entry), hash_cmp);
+		qsort(fd.harray, fd.num_array, sizeof(struct hash_entry),
+		      hash_cmp);
 
 	/*
 	 * Look for duplicates
@@ -744,14 +781,19 @@ resort:
 		goto errout;
 	}
 
+	/* Sort non-hashed directories by inode number */
+	if (fd.compress)
+		qsort(fd.harray+2, fd.num_array-2,
+		      sizeof(struct hash_entry), ino_cmp);
+
 	/*
 	 * Copy the directory entries.  In a htree directory these
 	 * will become the leaf nodes.
 	 */
-	retval = copy_dir_entries(fs, &fd, &outdir);
+	retval = copy_dir_entries(ctx, &fd, &outdir);
 	if (retval)
 		goto errout;
-	
+
 	free(dir_buf); dir_buf = 0;
 
 	if (!fd.compress) {
@@ -760,16 +802,14 @@ resort:
 		if (retval)
 			goto errout;
 	}
-	
+
 	retval = write_directory(ctx, fs, &outdir, ino, fd.compress);
 	if (retval)
 		goto errout;
 
 errout:
-	if (dir_buf)
-		free(dir_buf);
-	if (fd.harray)
-		free(fd.harray);
+	free(dir_buf);
+	free(fd.harray);
 
 	free_out_dir(&outdir);
 	return retval;
@@ -788,17 +828,14 @@ void e2fsck_rehash_directories(e2fsck_t ctx)
 	errcode_t		retval;
 	int			cur, max, all_dirs, dir_index, first = 1;
 
-#ifdef RESOURCE_TRACK
-	init_resource_track(&rtrack);
-#endif
-
+	init_resource_track(&rtrack, ctx->fs->io);
 	all_dirs = ctx->options & E2F_OPT_COMPRESS_DIRS;
 
 	if (!ctx->dirs_to_hash && !all_dirs)
 		return;
 
 	e2fsck_get_lost_and_found(ctx, 0);
-		
+
 	clear_problem_context(&pctx);
 
 	dir_index = ctx->fs->super->s_feature_compat & EXT2_FEATURE_COMPAT_DIR_INDEX;
@@ -807,7 +844,7 @@ void e2fsck_rehash_directories(e2fsck_t ctx)
 		dirinfo_iter = e2fsck_dir_info_iter_begin(ctx);
 		max = e2fsck_get_num_dirinfo(ctx);
 	} else {
-		retval = ext2fs_u32_list_iterate_begin(ctx->dirs_to_hash, 
+		retval = ext2fs_u32_list_iterate_begin(ctx->dirs_to_hash,
 						       &iter);
 		if (retval) {
 			pctx.errcode = retval;
@@ -818,7 +855,7 @@ void e2fsck_rehash_directories(e2fsck_t ctx)
 	}
 	while (1) {
 		if (all_dirs) {
-			if ((dir = e2fsck_dir_info_iter(ctx, 
+			if ((dir = e2fsck_dir_info_iter(ctx,
 							dirinfo_iter)) == 0)
 				break;
 			ino = dir->ino;
@@ -850,15 +887,10 @@ void e2fsck_rehash_directories(e2fsck_t ctx)
 		e2fsck_dir_info_iter_end(ctx, dirinfo_iter);
 	else
 		ext2fs_u32_list_iterate_end(iter);
-	
+
 	if (ctx->dirs_to_hash)
 		ext2fs_u32_list_free(ctx->dirs_to_hash);
 	ctx->dirs_to_hash = 0;
 
-#ifdef RESOURCE_TRACK
-	if (ctx->options & E2F_OPT_TIME2) {
-		e2fsck_clear_progbar(ctx);
-		print_resource_track("Pass 3A", &rtrack);
-	}
-#endif
+	print_resource_track(ctx, "Pass 3A", &rtrack, ctx->fs->io);
 }

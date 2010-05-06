@@ -68,7 +68,7 @@ char *blkid_get_devname(blkid_cache cache, const char *token,
 
 	if (!token)
 		return NULL;
-	
+
 	if (!cache) {
 		if (blkid_get_cache(&c, NULL) < 0)
 			return NULL;
@@ -97,10 +97,8 @@ char *blkid_get_devname(blkid_cache cache, const char *token,
 	ret = blkid_strdup(blkid_dev_devname(dev));
 
 out:
-	if (t)
-		free(t);
-	if (v)
-		free(v);
+	free(t);
+	free(v);
 	if (!cache) {
 		blkid_put_cache(c);
 	}
@@ -126,7 +124,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Couldn't get blkid cache\n");
 		exit(1);
 	}
-	
+
 	if (argv[2]) {
 		value = blkid_get_tag_value(cache, argv[1], argv[2]);
 		printf("%s has tag %s=%s\n", argv[2], argv[1],

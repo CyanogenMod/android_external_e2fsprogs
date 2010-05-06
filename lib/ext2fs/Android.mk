@@ -14,6 +14,8 @@ LOCAL_SRC_FILES := \
 	block.c \
 	bmap.c \
 	check_desc.c \
+	crc16.c \
+	csum.c \
 	closefs.c \
 	dblist.c \
 	dblist_dir.c \
@@ -23,6 +25,7 @@ LOCAL_SRC_FILES := \
 	dupfs.c \
 	expanddir.c \
 	ext_attr.c \
+	extent.c \
 	finddev.c \
 	flushb.c \
 	freefs.c \
@@ -30,6 +33,7 @@ LOCAL_SRC_FILES := \
 	get_pathname.c \
 	getsize.c \
 	getsectsize.c \
+	i_block.c \
 	icount.c \
 	ind_block.c \
 	initialize.c \
@@ -48,10 +52,10 @@ LOCAL_SRC_FILES := \
 	read_bb.c \
 	read_bb_file.c \
 	res_gdt.c \
-	rs_bitmap.c \
 	rw_bitmaps.c \
 	swapfs.c \
 	tdb.c \
+	undo_io.c \
 	unix_io.c \
 	unlink.c \
 	valid_blk.c \
@@ -93,7 +97,9 @@ LOCAL_CFLAGS := -O2 -g -W -Wall \
 	-DHAVE_LSEEK64_PROTOTYPE \
 	-DHAVE_EXT2_IOCTLS \
 	-DHAVE_LINUX_FD_H \
-	-DHAVE_TYPE_SSIZE_T
+	-DHAVE_TYPE_SSIZE_T \
+	-DHAVE_SYS_TIME_H \
+	-DHAVE_SYSCONF
 
 LOCAL_PRELINK_MODULE := false
 

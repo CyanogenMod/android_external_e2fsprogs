@@ -16,7 +16,7 @@
  * 3. The name of the author may not be used to endorse or promote
  *    products derived from this software without specific prior
  *    written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, ALL OF
@@ -38,6 +38,11 @@
  */
 #define _SVID_SOURCE
 
+#ifdef _WIN32
+#define _WIN32_WINNT 0x0500
+#include <windows.h>
+#define UUID MYUUID
+#endif
 #include <stdio.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -49,10 +54,14 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/types.h>
+#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
+#endif
 #include <sys/wait.h>
 #include <sys/stat.h>
+#ifdef HAVE_SYS_FILE_H
 #include <sys/file.h>
+#endif
 #ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
 #endif
@@ -77,6 +86,9 @@
 #if defined(__linux__) && defined(HAVE_SYS_SYSCALL_H)
 #include <sys/syscall.h>
 #endif
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
 
 #include "uuidP.h"
 #include "uuidd.h"
@@ -97,6 +109,30 @@
 THREAD_LOCAL unsigned short jrand_seed[3];
 #endif
 
+#ifdef _WIN32
+static void gettimeofday (struct timeval *tv, void *dummy)
+{
+	FILETIME	ftime;
+	uint64_t	n;
+
+	GetSystemTimeAsFileTime (&ftime);
+	n = (((uint64_t) ftime.dwHighDateTime << 32)
+	     + (uint64_t) ftime.dwLowDateTime);
+	if (n) {
+		n /= 10;
+		n -= ((369 * 365 + 89) * (uint64_t) 86400) * 1000000;
+	}
+
+	tv->tv_sec = n / 1000000;
+	tv->tv_usec = n % 1000000;
+}
+
+static int getuid (void)
+{
+	return 1;
+}
+#endif
+
 static int get_random_fd(void)
 {
 	struct timeval	tv;
@@ -105,14 +141,16 @@ static int get_random_fd(void)
 
 	if (fd == -2) {
 		gettimeofday(&tv, 0);
+#ifndef _WIN32
 		fd = open("/dev/urandom", O_RDONLY);
 		if (fd == -1)
 			fd = open("/dev/random", O_RDONLY | O_NONBLOCK);
 		if (fd >= 0) {
 			i = fcntl(fd, F_GETFD);
-			if (i >= 0) 
+			if (i >= 0)
 				fcntl(fd, F_SETFD, i | FD_CLOEXEC);
 		}
+#endif
 		srand((getpid() << 16) ^ getuid() ^ tv.tv_sec ^ tv.tv_usec);
 #ifdef DO_JRAND_MIX
 		jrand_seed[0] = getpid() ^ (tv.tv_sec & 0xFFFF);
@@ -152,7 +190,7 @@ static void get_random_bytes(void *buf, int nbytes)
 			lose_counter = 0;
 		}
 	}
-	
+
 	/*
 	 * We do this all the time, but this is the only source of
 	 * randomness if /dev/random/urandom is out to lunch.
@@ -164,7 +202,7 @@ static void get_random_bytes(void *buf, int nbytes)
 	jrand_seed[2] = jrand_seed[2] ^ syscall(__NR_gettid);
 	for (cp = buf, i = 0; i < nbytes; i++)
 		*cp++ ^= (jrand48(tmp_seed) >> 7) & 0xFF;
-	memcpy(jrand_seed, tmp_seed, 
+	memcpy(jrand_seed, tmp_seed,
 	       sizeof(jrand_seed)-sizeof(unsigned short));
 #endif
 
@@ -173,6 +211,11 @@ static void get_random_bytes(void *buf, int nbytes)
 
 /*
  * Get the ethernet hardware address, if we can find it...
+ *
+ * XXX for a windows version, probably should use GetAdaptersInfo:
+ * http://www.codeguru.com/cpp/i-n/network/networkinformation/article.php/c5451
+ * commenting out get_node_id just to get gen_uuid to compile under windows
+ * is not the right way to go!
  */
 static int get_node_id(unsigned char *node_id)
 {
@@ -190,7 +233,7 @@ static int get_node_id(unsigned char *node_id)
 /*
  * BSD 4.4 defines the size of an ifreq to be
  * max(sizeof(ifreq), sizeof(ifreq.ifr_name)+ifreq.ifr_addr.sa_len
- * However, under earlier systems, sa_len isn't present, so the size is 
+ * However, under earlier systems, sa_len isn't present, so the size is
  * just sizeof(struct ifreq)
  */
 #ifdef HAVE_SA_LEN
@@ -269,8 +312,9 @@ static int get_clock(uint32_t *clock_high, uint32_t *clock_low,
 	THREAD_LOCAL uint16_t		clock_seq;
 	struct timeval 			tv;
 	struct flock			fl;
-	unsigned long long		clock_reg;
+	uint64_t			clock_reg;
 	mode_t				save_umask;
+	int				len;
 
 	if (state_fd == -2) {
 		save_umask = umask(0);
@@ -316,7 +360,7 @@ static int get_clock(uint32_t *clock_high, uint32_t *clock_low,
 	if ((last.tv_sec == 0) && (last.tv_usec == 0)) {
 		get_random_bytes(&clock_seq, sizeof(clock_seq));
 		clock_seq &= 0x3FFF;
-		last = tv;
+		gettimeofday(&last, 0);
 		last.tv_sec--;
 	}
 
@@ -337,10 +381,10 @@ try_again:
 		adjustment = 0;
 		last = tv;
 	}
-		
+
 	clock_reg = tv.tv_usec*10 + adjustment;
-	clock_reg += ((unsigned long long) tv.tv_sec)*10000000;
-	clock_reg += (((unsigned long long) 0x01B21DD2) << 32) + 0x13814000;
+	clock_reg += ((uint64_t) tv.tv_sec)*10000000;
+	clock_reg += (((uint64_t) 0x01B21DD2) << 32) + 0x13814000;
 
 	if (num && (*num > 1)) {
 		adjustment += *num - 1;
@@ -352,10 +396,14 @@ try_again:
 
 	if (state_fd > 0) {
 		rewind(state_f);
-		ftruncate(state_fd, 0);
-		fprintf(state_f, "clock: %04x tv: %lu %lu adj: %d\n",
-			clock_seq, last.tv_sec, last.tv_usec, adjustment);
+		len = fprintf(state_f, 
+			      "clock: %04x tv: %016lu %08lu adj: %08d\n",
+			      clock_seq, last.tv_sec, last.tv_usec, adjustment);
 		fflush(state_f);
+		if (ftruncate(state_fd, len) < 0) {
+			fprintf(state_f, "                   \n");
+			fflush(state_f);
+		}
 		rewind(state_f);
 		fl.l_type = F_UNLCK;
 		fcntl(state_fd, F_SETLK, &fl);
@@ -371,20 +419,51 @@ static ssize_t read_all(int fd, char *buf, size_t count)
 {
 	ssize_t ret;
 	ssize_t c = 0;
+	int tries = 0;
 
 	memset(buf, 0, count);
 	while (count > 0) {
 		ret = read(fd, buf, count);
-		if (ret < 0) {
-			if ((errno == EAGAIN) || (errno == EINTR))
+		if (ret <= 0) {
+			if ((errno == EAGAIN || errno == EINTR || ret == 0) &&
+			    (tries++ < 5))
 				continue;
-			return -1;
+			return c ? c : -1;
 		}
+		if (ret > 0)
+			tries = 0;
 		count -= ret;
 		buf += ret;
 		c += ret;
 	}
 	return c;
+}
+
+/*
+ * Close all file descriptors
+ */
+static void close_all_fds(void)
+{
+	int i, max;
+
+#if defined(HAVE_SYSCONF) && defined(_SC_OPEN_MAX)
+	max = sysconf(_SC_OPEN_MAX);
+#elif defined(HAVE_GETDTABLESIZE)
+	max = getdtablesize();
+#elif defined(HAVE_GETRLIMIT) && defined(RLIMIT_NOFILE)
+	struct rlimit rl;
+
+	getrlimit(RLIMIT_NOFILE, &rl);
+	max = rl.rlim_cur;
+#else
+	max = OPEN_MAX;
+#endif
+
+	for (i=0; i < max; i++) {
+		close(i);
+		if (i <= 2)
+			open("/dev/null", O_RDWR);
+	}
 }
 
 
@@ -402,6 +481,7 @@ static int get_uuid_via_daemon(int op, uuid_t out, int *num)
 	ssize_t ret;
 	int32_t reply_len = 0, expected = 16;
 	struct sockaddr_un srv_addr;
+	struct stat st;
 	pid_t pid;
 	static const char *uuidd_path = UUIDD_PATH;
 	static int access_ret = -2;
@@ -417,9 +497,14 @@ static int get_uuid_via_daemon(int op, uuid_t out, int *num)
 		    sizeof(struct sockaddr_un)) < 0) {
 		if (access_ret == -2)
 			access_ret = access(uuidd_path, X_OK);
+		if (access_ret == 0)
+			access_ret = stat(uuidd_path, &st);
+		if (access_ret == 0 && (st.st_mode & (S_ISUID | S_ISGID)) == 0)
+			access_ret = access(UUIDD_DIR, W_OK);
 		if (access_ret == 0 && start_attempts++ < 5) {
 			if ((pid = fork()) == 0) {
-				execl(uuidd_path, "uuidd", "-qT", "300", 
+				close_all_fds();
+				execl(uuidd_path, "uuidd", "-qT", "300",
 				      (char *) NULL);
 				exit(1);
 			}

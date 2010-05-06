@@ -1,9 +1,9 @@
 /*
  * e2fsck.h
- * 
+ *
  * Copyright (C) 1993, 1994 Theodore Ts'o.  This file may be
  * redistributed under the terms of the GNU Public License.
- * 
+ *
  */
 
 #ifndef _E2FSCK_H
@@ -114,9 +114,9 @@ struct dx_dirblock_info {
 	blk_t		phys;
 	int		flags;
 	blk_t		parent;
-	ext2_dirhash_t	min_hash; 
+	ext2_dirhash_t	min_hash;
 	ext2_dirhash_t	max_hash;
-	ext2_dirhash_t	node_min_hash; 
+	ext2_dirhash_t	node_min_hash;
 	ext2_dirhash_t	node_max_hash;
 };
 
@@ -135,6 +135,8 @@ struct resource_track {
 	struct timeval user_start;
 	struct timeval system_start;
 	void	*brk_start;
+	unsigned long long bytes_read;
+	unsigned long long bytes_written;
 };
 #endif
 
@@ -152,6 +154,7 @@ struct resource_track {
 #define E2F_OPT_FORCE		0x0100
 #define E2F_OPT_WRITECHECK	0x0200
 #define E2F_OPT_COMPRESS_DIRS	0x0400
+#define E2F_OPT_FRAGCHECK	0x0800
 
 /*
  * E2fsck flags
@@ -160,17 +163,19 @@ struct resource_track {
 #define E2F_FLAG_CANCEL		0x0002 /* Cancel signaled */
 #define E2F_FLAG_SIGNAL_MASK	0x0003
 #define E2F_FLAG_RESTART	0x0004 /* Restart signaled */
+#define E2F_FLAG_RESTART_LATER	0x0008 /* Restart after all iterations done */
 
 #define E2F_FLAG_SETJMP_OK	0x0010 /* Setjmp valid for abort */
 
 #define E2F_FLAG_PROG_BAR	0x0020 /* Progress bar on screen */
 #define E2F_FLAG_PROG_SUPPRESS	0x0040 /* Progress suspended */
 #define E2F_FLAG_JOURNAL_INODE	0x0080 /* Create a new ext3 journal inode */
-#define E2F_FLAG_SB_SPECIFIED	0x0100 /* The superblock was explicitly 
+#define E2F_FLAG_SB_SPECIFIED	0x0100 /* The superblock was explicitly
 					* specified by the user */
 #define E2F_FLAG_RESTARTED	0x0200 /* E2fsck has been restarted */
 #define E2F_FLAG_RESIZE_INODE	0x0400 /* Request to recreate resize inode */
 #define E2F_FLAG_GOT_DEVSIZE	0x0800 /* Device size has been fetched */
+#define E2F_FLAG_EXITING	0x1000 /* E2fsck exiting due to errors */
 
 /*
  * Defines for indicating the e2fsck pass number
@@ -192,6 +197,8 @@ typedef struct ea_refcount *ext2_refcount_t;
  */
 typedef struct e2fsck_struct *e2fsck_t;
 
+#define MAX_EXTENT_DEPTH_COUNT 5
+
 struct e2fsck_struct {
 	ext2_filsys fs;
 	const char *program_name;
@@ -203,7 +210,7 @@ struct e2fsck_struct {
 	blk_t	use_superblock;	/* sb requested by user */
 	blk_t	superblock;	/* sb used to open fs */
 	int	blocksize;	/* blocksize */
-	blk_t	num_blocks;	/* Total number of blocks */
+	blk64_t	num_blocks;	/* Total number of blocks */
 	int	mount_flags;
 	blkid_cache blkid;	/* blkid cache */
 
@@ -260,7 +267,7 @@ struct e2fsck_struct {
 	 */
 	ext2_ino_t lost_and_found;
 	int bad_lost_and_found;
-	
+
 	/*
 	 * Directory information
 	 */
@@ -283,6 +290,7 @@ struct e2fsck_struct {
 	 */
 	int process_inode_size;
 	int inode_buffer_blocks;
+	unsigned int htree_slack_percentage;
 
 	/*
 	 * ext3 journal support
@@ -306,7 +314,7 @@ struct e2fsck_struct {
 	unsigned int progress_last_time;
 	int interactive;	/* Are we connected directly to a tty? */
 	char start_meta[2], stop_meta[2];
-	
+
 	/* File counts */
 	__u32 fs_directory_count;
 	__u32 fs_regular_count;
@@ -323,9 +331,11 @@ struct e2fsck_struct {
 	__u32 fs_dind_count;
 	__u32 fs_tind_count;
 	__u32 fs_fragmented;
+	__u32 fs_fragmented_dir;
 	__u32 large_files;
 	__u32 fs_ext_attr_inodes;
 	__u32 fs_ext_attr_blocks;
+	__u32 extent_depth_count[MAX_EXTENT_DEPTH_COUNT];
 
 	/* misc fields */
 	time_t now;
@@ -372,21 +382,24 @@ extern int e2fsck_run(e2fsck_t ctx);
 extern void read_bad_blocks_file(e2fsck_t ctx, const char *bad_blocks_file,
 				 int replace_bad_blocks);
 
+/* crc32.c */
+extern __u32 crc32_be(__u32 crc, unsigned char const *p, size_t len);
+
 /* dirinfo.c */
 extern void e2fsck_add_dir_info(e2fsck_t ctx, ext2_ino_t ino, ext2_ino_t parent);
 extern void e2fsck_free_dir_info(e2fsck_t ctx);
 extern int e2fsck_get_num_dirinfo(e2fsck_t ctx);
 extern struct dir_info_iter *e2fsck_dir_info_iter_begin(e2fsck_t ctx);
-extern struct dir_info *e2fsck_dir_info_iter(e2fsck_t ctx, 
+extern struct dir_info *e2fsck_dir_info_iter(e2fsck_t ctx,
 					     struct dir_info_iter *);
 extern void e2fsck_dir_info_iter_end(e2fsck_t ctx, struct dir_info_iter *);
-extern int e2fsck_dir_info_set_parent(e2fsck_t ctx, ext2_ino_t ino, 
+extern int e2fsck_dir_info_set_parent(e2fsck_t ctx, ext2_ino_t ino,
 				      ext2_ino_t parent);
-extern int e2fsck_dir_info_set_dotdot(e2fsck_t ctx, ext2_ino_t ino, 
+extern int e2fsck_dir_info_set_dotdot(e2fsck_t ctx, ext2_ino_t ino,
 				      ext2_ino_t dotdot);
-extern int e2fsck_dir_info_get_parent(e2fsck_t ctx, ext2_ino_t ino, 
+extern int e2fsck_dir_info_get_parent(e2fsck_t ctx, ext2_ino_t ino,
 				      ext2_ino_t *parent);
-extern int e2fsck_dir_info_get_dotdot(e2fsck_t ctx, ext2_ino_t ino, 
+extern int e2fsck_dir_info_get_dotdot(e2fsck_t ctx, ext2_ino_t ino,
 				      ext2_ino_t *dotdot);
 
 /* dx_dirinfo.c */
@@ -422,13 +435,16 @@ extern void e2fsck_move_ext3_journal(e2fsck_t ctx);
 extern int e2fsck_fix_ext3_journal_hint(e2fsck_t ctx);
 
 /* pass1.c */
-extern void e2fsck_setup_tdb_icount(e2fsck_t ctx, int flags, 
+extern void e2fsck_setup_tdb_icount(e2fsck_t ctx, int flags,
 				    ext2_icount_t *ret);
 extern void e2fsck_use_inode_shortcuts(e2fsck_t ctx, int bool);
 extern int e2fsck_pass1_check_device_inode(ext2_filsys fs,
 					   struct ext2_inode *inode);
-extern int e2fsck_pass1_check_symlink(ext2_filsys fs,
+extern int e2fsck_pass1_check_symlink(ext2_filsys fs, ext2_ino_t ino,
 				      struct ext2_inode *inode, char *buf);
+extern void e2fsck_clear_inode(e2fsck_t ctx, ext2_ino_t ino,
+			       struct ext2_inode *inode, int restart_flag,
+			       const char *source);
 
 /* pass2.c */
 extern int e2fsck_process_bad_inode(e2fsck_t ctx, ext2_ino_t dir,
@@ -439,7 +455,7 @@ extern int e2fsck_reconnect_file(e2fsck_t ctx, ext2_ino_t inode);
 extern errcode_t e2fsck_expand_directory(e2fsck_t ctx, ext2_ino_t dir,
 					 int num, int gauranteed_size);
 extern ext2_ino_t e2fsck_get_lost_and_found(e2fsck_t ctx, int fix);
-extern errcode_t e2fsck_adjust_inode_count(e2fsck_t ctx, ext2_ino_t ino, 
+extern errcode_t e2fsck_adjust_inode_count(e2fsck_t ctx, ext2_ino_t ino,
 					   int adj);
 
 
@@ -455,9 +471,7 @@ void e2fsck_rehash_directories(e2fsck_t ctx);
 /* super.c */
 void check_super_block(e2fsck_t ctx);
 int check_backup_super_block(e2fsck_t ctx);
-
-/* swapfs.c */
-void swap_filesys(e2fsck_t ctx);
+void check_resize_inode(e2fsck_t ctx);
 
 /* util.c */
 extern void *e2fsck_allocate_memory(e2fsck_t ctx, unsigned int size,
@@ -469,14 +483,27 @@ extern void e2fsck_read_bitmaps(e2fsck_t ctx);
 extern void e2fsck_write_bitmaps(e2fsck_t ctx);
 extern void preenhalt(e2fsck_t ctx);
 extern char *string_copy(e2fsck_t ctx, const char *str, int len);
+extern errcode_t e2fsck_zero_blocks(ext2_filsys fs, blk_t blk, int num,
+				    blk_t *ret_blk, int *ret_count);
+extern int fs_proc_check(const char *fs_name);
+extern int check_for_modules(const char *fs_name);
 #ifdef RESOURCE_TRACK
-extern void print_resource_track(const char *desc,
-				 struct resource_track *track);
-extern void init_resource_track(struct resource_track *track);
+extern void print_resource_track(e2fsck_t ctx,
+				 const char *desc,
+				 struct resource_track *track,
+				 io_channel channel);
+extern void init_resource_track(struct resource_track *track,
+				io_channel channel);
+#else
+#define print_resource_track(ctx, desc, track, channel) do { } while (0)
+#define init_resource_track(track, channel) do { } while (0)
 #endif
 extern int inode_has_valid_blocks(struct ext2_inode *inode);
 extern void e2fsck_read_inode(e2fsck_t ctx, unsigned long ino,
 			      struct ext2_inode * inode, const char * proc);
+extern void e2fsck_read_inode_full(e2fsck_t ctx, unsigned long ino,
+				   struct ext2_inode *inode,
+				   const int bufsize, const char *proc);
 extern void e2fsck_write_inode(e2fsck_t ctx, unsigned long ino,
 			       struct ext2_inode * inode, const char * proc);
 extern void e2fsck_write_inode_full(e2fsck_t ctx, unsigned long ino,
@@ -488,6 +515,7 @@ extern void mtrace_print(char *mesg);
 extern blk_t get_backup_sb(e2fsck_t ctx, ext2_filsys fs,
 			   const char *name, io_manager manager);
 extern int ext2_file_type(unsigned int mode);
+extern int write_all(int fd, char *buf, size_t count);
 
 /* unix.c */
 extern void e2fsck_clear_progbar(e2fsck_t ctx);

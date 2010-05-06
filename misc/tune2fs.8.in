@@ -4,7 +4,7 @@
 .\"
 .TH TUNE2FS 8 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
 .SH NAME
-tune2fs \- adjust tunable filesystem parameters on ext2/ext3 filesystems
+tune2fs \- adjust tunable filesystem parameters on ext2/ext3/ext4 filesystems
 .SH SYNOPSIS
 .B tune2fs
 [
@@ -88,7 +88,14 @@ device
 .SH DESCRIPTION
 .BI tune2fs
 allows the system administrator to adjust various tunable filesystem 
-parameters on Linux ext2/ext3 filesystems.
+parameters on Linux ext2, ext3, or ext4 filesystems.  The current values 
+of these options can be displayed by using the
+.B -l
+option to
+.BR tune2fs (8)
+program, or by using the
+.BR dumpe2fs (8)
+program.
 .SH OPTIONS
 .TP
 .BI \-c " max-mount-counts"
@@ -161,16 +168,24 @@ filesystem blocks. This is the number of blocks read or written to disk
 before moving to next disk. This mostly affects placement of filesystem
 metadata like bitmaps at
 .BR mke2fs (2)
-time to avoid placing them on a single disk, which can hurt the performanace.
+time to avoid placing them on a single disk, which can hurt the performance.
 It may also be used by block allocator.
 .TP
-.BI stripe-width= stripe-width
+.BI stripe_width= stripe-width
 Configure the filesystem for a RAID array with
 .I stripe-width
 filesystem blocks per stripe. This is typically be stride-size * N, where
 N is the number of data disks in the RAID (e.g. RAID 5 N+1, RAID 6 N+2).
 This allows the block allocator to prevent read-modify-write of the
 parity in a RAID stripe if possible when the data is written.
+.TP
+.BI hash_alg= hash-alg
+Set the default hash algorithm used for filesystems with hashed b-tree
+directories.  Valid algorithms accepted are:
+.IR legacy ,
+.IR half_md4 ,
+and
+.IR tea .
 .TP
 .B test_fs
 Set a flag in the filesystem superblock indicating that it may be
@@ -204,13 +219,15 @@ it is converted to a numerical gid before it is stored in the superblock.
 .TP
 .B \-i " \fIinterval-between-checks\fR[\fBd\fR|\fBm\fR|\fBw\fR]"
 Adjust the maximal time between two filesystem checks. 
-No postfix or
+No suffix or
 .B d
-result in days,
+will interpret the number
+.I interval-between-checks
+as days,
 .B m
-in months, and
+as months, and
 .B w
-in weeks.  A value of zero will disable the time-dependent checking.
+as weeks.  A value of zero will disable the time-dependent checking.
 .sp
 It is strongly recommended that either
 .B \-c
@@ -311,7 +328,8 @@ that size.
 @JDEV@options can be given for a filesystem.
 .TP
 .B \-l
-List the contents of the filesystem superblock.
+List the contents of the filesystem superblock, including the current
+values of the parameters that can be set via this program.
 .TP
 .BI \-L " volume-label"
 Set the volume label of the filesystem.  
@@ -415,15 +433,20 @@ The following filesystem features can be set or cleared using
 .BR tune2fs :
 .RS 1.2i
 .TP
-.B large_file
-Filesystem can contain files that are greater than 2GB.  (Modern kernels
-set this feature automatically when a file > 2GB is created.)
-.TP
 .B dir_index
 Use hashed b-trees to speed up lookups in large directories.
 .TP
 .B filetype
 Store file type information in directory entries.
+.TP
+.B flex_bg
+Allow bitmaps and inode tables for a block group to be placed
+anywhere on the storage media.  \fBTune2fs\fR will not reorganize
+the location of the inode tables and allocation bitmaps, as
+.BR mke2fs (8)
+will do when it creates a freshly formated file system with
+.B flex_bg
+enabled.
 .TP
 .B has_journal
 Use a journal to ensure filesystem consistency even across unclean shutdowns.
@@ -431,18 +454,31 @@ Setting the filesystem feature is equivalent to using the
 .B \-j
 option.
 .TP
-.B sparse_super
-Limit the number of backup superblocks to save space on large filesystems.
+.B large_file
+Filesystem can contain files that are greater than 2GB.  (Modern kernels
+set this feature automatically when a file > 2GB is created.)
 .TP
 .B resize_inode
 Reserve space so the block group descriptor table may grow in the
 future.
 .B Tune2fs 
 only supports clearing this filesystem feature.
+.TP
+.B sparse_super
+Limit the number of backup superblocks to save space on large filesystems.
+.TP
+.B uninit_bg
+Allow the kernel to initialize bitmaps and inode tables and keep a high
+watermark for the unused inodes in a filesystem, to reduce
+.BR e2fsck (8)
+time.  This first e2fsck run after enabling this feature will take the
+full time, but subsequent e2fsck runs will take only a fraction of the
+original time, depending on how full the file system is.
 .RE
 .IP
 After setting or clearing 
 .BR sparse_super ,
+.BR uninit_bg ,
 .BR filetype ,
 or
 .B resize_inode
@@ -457,6 +493,12 @@ if necessary.  After setting the
 feature, 
 .B e2fsck -D
 can be run to convert existing directories to the hashed B-tree format.
+Enabling certain filesystem features may prevent the filesystem from being
+mounted by kernels which do not support those features.  In particular, the
+.BR uninit_bg
+and
+.BR flex_bg
+features are only supported by the ext4 filesystem.
 .TP
 .BI \-r " reserved-blocks-count"
 Set the number of reserved filesystem blocks.
@@ -464,6 +506,7 @@ Set the number of reserved filesystem blocks.
 .BI \-T " time-last-checked"
 Set the time the filesystem was last checked using
 .BR  e2fsck .
+The time is interpreted using the current (local) timezone.
 This can be useful in scripts which use a Logical Volume Manager to make
 a consistent snapshot of a filesystem, and then check the filesystem 
 during off hours to make sure it hasn't been corrupted due to 

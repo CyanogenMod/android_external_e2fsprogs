@@ -14,6 +14,11 @@
 #ifdef HAS_STDLIB_H
 #include <stdlib.h>
 #endif
+#ifdef HAVE_ERRNO_H
+#include <errno.h>
+#else
+extern int errno;
+#endif
 #include "ss_internal.h"
 #include <stdio.h>
 
@@ -213,16 +218,14 @@ int ss_execute_line (sci_idx, line_ptr)
             return SS_ET_ESCAPE_DISABLED;
         else {
             line_ptr++;
-            system(line_ptr);
-	    return 0;
+            return (system(line_ptr) < 0) ? errno : 0;
         }
     }
 
     /* parse it */
     argv = ss_parse(sci_idx, line_ptr, &argc);
     if (argc == 0) {
-	if (argv)
-	    free(argv);
+	free(argv);
         return 0;
     }
 

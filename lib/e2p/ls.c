@@ -6,7 +6,7 @@
  *                                 Universite Pierre et Marie Curie (Paris VI)
  *
  * Copyright (C) 1995, 1996, 1997  Theodore Ts'o <tytso@mit.edu>
- * 
+ *
  * This file can be redistributed under the terms of the GNU Library General
  * Public License
  */
@@ -227,7 +227,7 @@ void list_super2(struct ext2_super_block * sb, FILE *f)
 	fprintf(f, "Block size:               %u\n", EXT2_BLOCK_SIZE(sb));
 	fprintf(f, "Fragment size:            %u\n", EXT2_FRAG_SIZE(sb));
 	if (sb->s_reserved_gdt_blocks)
-		fprintf(f, "Reserved GDT blocks:      %u\n", 
+		fprintf(f, "Reserved GDT blocks:      %u\n",
 			sb->s_reserved_gdt_blocks);
 	fprintf(f, "Blocks per group:         %u\n", sb->s_blocks_per_group);
 	fprintf(f, "Fragments per group:      %u\n", sb->s_frags_per_group);
@@ -242,6 +242,9 @@ void list_super2(struct ext2_super_block * sb, FILE *f)
 	if (sb->s_first_meta_bg)
 		fprintf(f, "First meta block group:   %u\n",
 			sb->s_first_meta_bg);
+	if (sb->s_log_groups_per_flex)
+		fprintf(f, "Flex block group size:    %u\n",
+			1 << sb->s_log_groups_per_flex);
 	if (sb->s_mkfs_time) {
 		tm = sb->s_mkfs_time;
 		fprintf(f, "Filesystem created:       %s", ctime(&tm));
@@ -264,13 +267,37 @@ void list_super2(struct ext2_super_block * sb, FILE *f)
 		next = sb->s_lastcheck + sb->s_checkinterval;
 		fprintf(f, "Next check after:         %s", ctime(&next));
 	}
+#define POW2(x) ((__u64) 1 << (x))
+	if (sb->s_kbytes_written) {
+		fprintf(f, "Lifetime writes:          ");
+		if (sb->s_kbytes_written < POW2(13))
+			fprintf(f, "%llu kB\n", sb->s_kbytes_written);
+		else if (sb->s_kbytes_written < POW2(23))
+			fprintf(f, "%llu MB\n",
+				(sb->s_kbytes_written + POW2(9)) >> 10);
+		else if (sb->s_kbytes_written < POW2(33))
+			fprintf(f, "%llu GB\n",
+				(sb->s_kbytes_written + POW2(19)) >> 20);
+		else if (sb->s_kbytes_written < POW2(43))
+			fprintf(f, "%llu TB\n",
+				(sb->s_kbytes_written + POW2(29)) >> 30);
+		else
+			fprintf(f, "%llu PB\n",
+				(sb->s_kbytes_written + POW2(39)) >> 40);
+	}
 	fprintf(f, "Reserved blocks uid:      ");
 	print_user(sb->s_def_resuid, f);
 	fprintf(f, "Reserved blocks gid:      ");
 	print_group(sb->s_def_resgid, f);
 	if (sb->s_rev_level >= EXT2_DYNAMIC_REV) {
 		fprintf(f, "First inode:              %d\n", sb->s_first_ino);
-		fprintf(f, "Inode size:		  %d\n", sb->s_inode_size);
+		fprintf(f, "Inode size:	          %d\n", sb->s_inode_size);
+		if (sb->s_min_extra_isize)
+			fprintf(f, "Required extra isize:     %d\n",
+				sb->s_min_extra_isize);
+		if (sb->s_want_extra_isize)
+			fprintf(f, "Desired extra isize:      %d\n",
+				sb->s_want_extra_isize);
 	}
 	if (!e2p_is_null_uuid(sb->s_journal_uuid))
 		fprintf(f, "Journal UUID:             %s\n",

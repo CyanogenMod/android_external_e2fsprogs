@@ -4,7 +4,7 @@
 .\" 
 .TH DEBUGFS 8 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
 .SH NAME
-debugfs \- ext2/ext3 file system debugger
+debugfs \- ext2/ext3/ext4 file system debugger
 .SH SYNOPSIS
 .B debugfs
 [
@@ -37,10 +37,10 @@ device
 The 
 .B debugfs 
 program is an interactive file system debugger. It can be used to
-examine and change the state of an ext2 file system.
+examine and change the state of an ext2, ext3, or ext4 file system.
 .br
 .I device
-is the special file corresponding to the device containing the ext2
+is the special file corresponding to the device containing the
 file system (e.g /dev/hdXX).
 .SH OPTIONS
 .TP
@@ -90,10 +90,11 @@ Forces the use of the given block size for the file system, rather than
 detecting the correct block size as normal.
 .TP
 .I -s superblock
-Causes the file system superblock to be read from the given block number,
-rather than the default (1).  If you give a
+Causes the file system superblock to be read from the given block
+number, instead of using the primary superblock (located at an offset of
+1024 bytes from the beginning of the filesystem).  If you specify the
 .I -s
-option, you must also give a
+option, you must also provide the blocksize of the filesystem via the
 .I -b
 option.
 .TP
@@ -168,14 +169,18 @@ Change the current working directory to
 Change the root directory to be the directory 
 .IR filespec .
 .TP
-.I close
-Close the currently open file system.
+.I close [-a]
+Close the currently open file system.  If the 
+.I -a
+option is specified, write out any changes to the superblock and block
+group descriptors to all of the backup superblocks, not just to the
+master superblock.
 .TP
 .I clri file
 Clear the contents of the inode 
 .IR file .
 .TP
-.I dump [-p] filspec out_file
+.I dump [-p] filespec out_file
 Dump the contents of the inode 
 .I filespec
 to the output file 
@@ -186,6 +191,25 @@ option is given set the owner, group and permissions information on
 .I out_file 
 to match 
 .IR filespec .
+.TP
+.I dump_extents [-n] [-l] filespec
+Dump the the extent tree of the inode
+.IR filespec .
+The 
+.I -n
+flag will cause
+.I dump_extents
+to only display the interior nodes in the extent tree.   The
+.I  -l
+flag cause
+.I dump_extents
+to only display the leaf nodes in the extent tree.
+.IP
+(Please note that the length and range of blocks for the last extent in
+an interior node is an estimate by the extents library functions, and is
+not stored in file esystem data structures.   Hence, the values displayed
+may not necessarily by accurate and does not indicate a problem or 
+corruption in the file system.)
 .TP
 .I expand_dir filespec
 Expand the directory
@@ -306,7 +330,7 @@ and
 .I \-b
 options.
 .TP
-.I ls [-l] [-d] filespec
+.I ls [-l] [-d] [-p] filespec
 Print a listing of the files in the directory
 .IR filespec .
 The 
@@ -315,6 +339,11 @@ flag will list files using a more verbose format.
 The
 .I \-d
 flag will list deleted entries in the directory.
+The 
+.I \-p
+flag will list the files in a format which is more easily parsable by
+scripts, as well as making it more clear when there are spaces or other
+non-printing characters at the end of filenames.
 .TP
 .I modify_inode filespec
 Modify the contents of the inode structure in the inode
@@ -465,7 +494,7 @@ pass, use the debugfs
 command to link the inode to the destination pathname, or use 
 .B e2fsck
 to check the filesystem and link all of the recovered inodes to the
-lost+found dirctory.
+lost+found directory.
 .TP
 .I unlink pathname
 Remove the link specified by 

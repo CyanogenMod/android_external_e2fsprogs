@@ -4,11 +4,11 @@
 .\" 
 .TH E2FSCK 8 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
 .SH NAME
-e2fsck \- check a Linux ext2/ext3 file system
+e2fsck \- check a Linux ext2/ext3/ext4 file system
 .SH SYNOPSIS
 .B e2fsck
 [
-.B \-pacnyrdfkvstDFSV
+.B \-pacnyrdfkvtDFV
 ]
 [
 .B \-b
@@ -37,17 +37,13 @@ e2fsck \- check a Linux ext2/ext3 file system
 .I device
 .SH DESCRIPTION
 .B e2fsck
-is used to check a Linux second extended file system (ext2fs).  
-.B E2fsck
-also 
-supports ext2 filesystems containing a journal, which are
-also sometimes known as ext3 filesystems, by first applying the journal 
-to the filesystem before continuing with normal 
+is used to check the ext2/ext3/ext4 family of file systems.   
+For ext3 and ext4 filesystems that use a journal, if the system has been
+shut down uncleanly without any errors, normally, after replaying the
+committed transactions  in the journal, the file system should be
+marked as clean.   Hence, for filesystems that use journalling,
 .B e2fsck
-processing.  After the journal has been applied, a filesystem will
-normally be marked as clean.  Hence, for ext3 filesystems, 
-.B e2fsck
-will normally run the journal and exit, unless its superblock
+will normally replay the journal and exit, unless its superblock
 indicates that further checking is required.
 .PP
 .I device
@@ -139,6 +135,11 @@ so that the progress of the filesystem
 check can be monitored.  This option is typically used by programs 
 which are running
 .BR e2fsck .
+If the file descriptor number is negative, then absolute value of
+the file descriptor will be used, and the progress information will be
+suppressed initially.  It can later be enabled by sending the
+.B e2fsck
+process a SIGUSR1 signal.
 If the file descriptor specified is 0, 
 .B e2fsck
 will print a completion bar as it goes about its business.  This requires
@@ -180,9 +181,14 @@ following options are supported:
 .RS 1.2i
 .TP
 .BI ea_ver= extended_attribute_version
-Assume the format of the extended attribute blocks in the filesystem is
-the specified version number.  The version number may be 1 or 2.  The
-default extended attribute version format is 2.
+Set the version of the extended attribute blocks which
+.B e2fsck
+will require while checking the filesystem.  The version number may 
+be 1 or 2.  The default extended attribute version format is 2.
+.TP
+.BI fragcheck
+During pass 1, print a detailed report of any discontiguous blocks for
+files in the filesystem.
 .RE
 .TP
 .B \-f
@@ -236,16 +242,7 @@ in the file are added to the bad blocks list.)
 Open the filesystem read-only, and assume an answer of `no' to all
 questions.  Allows
 .B e2fsck
-to be used non-interactively.  (Note: if the 
-.BR \-c ,
-.BR \-l ,
-or
-.B \-L
-options are specified in addition to the 
-.B \-n
-option, then the filesystem will be opened read-write, to permit the
-bad-blocks list to be updated.  However, no other changes will be made
-to the filesystem.)  This option
+to be used non-interactively.  This option
 may not be specified at the same time as the 
 .B \-p
 or
@@ -253,7 +250,7 @@ or
 options.
 .TP
 .B \-p
-Automatically repair ("preen") the file system.  This option will case
+Automatically repair ("preen") the file system.  This option will cause
 .B e2fsck
 to automatically
 fix any filesystem problems that can be safely fixed without human
@@ -274,17 +271,6 @@ options.
 .B \-r
 This option does nothing at all; it is provided only for backwards
 compatibility.
-.TP 
-.B \-s
-This option will byte-swap the filesystem so that it is using the normalized, 
-standard byte-order (which is i386 or little endian).  If the filesystem is
-already in the standard byte-order, 
-.B e2fsck 
-will take no action.
-.TP
-.B \-S
-This option will byte-swap the filesystem, regardless of its current 
-byte-order.
 .TP
 .B \-t
 Print timing statistics for
@@ -337,14 +323,15 @@ The following signals have the following effect when sent to
 .B SIGUSR1
 This signal causes
 .B e2fsck
-to start displaying a completion bar.  (See discussion of the 
+to start displaying a completion bar or emitting progress information.  
+(See discussion of the 
 .B \-C
 option.)
 .TP
 .B SIGUSR2
 This signal causes
 .B e2fsck 
-to stop displaying a completion bar.
+to stop displaying a completion bar or emitting progress information.
 .SH REPORTING BUGS
 Almost any piece of software will have bugs.  If you manage to find a
 filesystem which causes 
@@ -403,6 +390,7 @@ This version of
 .B e2fsck
 was written by Theodore Ts'o <tytso@mit.edu>.
 .SH SEE ALSO
+.BR e2fsck.conf (5),
 .BR badblocks (8),
 .BR dumpe2fs (8),
 .BR debugfs (8),

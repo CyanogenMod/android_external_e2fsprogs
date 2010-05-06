@@ -1,6 +1,6 @@
 /*
  * util.c --- miscellaneous utilities
- * 
+ *
  * Copyright (C) 1993, 1994, 1995, 1996, 1997 Theodore Ts'o.
  *
  * %Begin-Header%
@@ -10,9 +10,13 @@
  */
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
+#ifdef __linux__
+#include <sys/utsname.h>
+#endif
 
 #ifdef HAVE_CONIO_H
 #undef HAVE_TERMIOS_H
@@ -22,11 +26,14 @@
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
-#include <stdio.h>
 #endif
 
 #ifdef HAVE_MALLOC_H
 #include <malloc.h>
+#endif
+
+#ifdef HAVE_ERRNO_H
+#include <errno.h>
 #endif
 
 #include "e2fsck.h"
@@ -38,7 +45,7 @@ extern e2fsck_t e2fsck_global_ctx;   /* Try your very best not to use this! */
 
 void fatal_error(e2fsck_t ctx, const char *msg)
 {
-	if (msg) 
+	if (msg)
 		fprintf (stderr, "e2fsck: %s\n", msg);
 	if (ctx->fs && ctx->fs->io) {
 		if (ctx->fs->io->magic == EXT2_ET_MAGIC_IO_CHANNEL)
@@ -59,7 +66,7 @@ void *e2fsck_allocate_memory(e2fsck_t ctx, unsigned int size,
 	char buf[256];
 
 #ifdef DEBUG_ALLOCATE_MEMORY
-	printf("Allocating %d bytes for %s...\n", size, description);
+	printf("Allocating %u bytes for %s...\n", size, description);
 #endif
 	ret = malloc(size);
 	if (!ret) {
@@ -70,11 +77,11 @@ void *e2fsck_allocate_memory(e2fsck_t ctx, unsigned int size,
 	return ret;
 }
 
-char *string_copy(e2fsck_t ctx EXT2FS_ATTR((unused)), 
+char *string_copy(e2fsck_t ctx EXT2FS_ATTR((unused)),
 		  const char *str, int len)
 {
 	char	*ret;
-	
+
 	if (!str)
 		return NULL;
 	if (!len)
@@ -233,28 +240,14 @@ void e2fsck_write_bitmaps(e2fsck_t ctx)
 	errcode_t	retval;
 	const char	*old_op;
 
-	if (ext2fs_test_bb_dirty(fs)) {
-		old_op = ehandler_operation(_("writing block bitmaps"));
-		retval = ext2fs_write_block_bitmap(fs);
-		ehandler_operation(old_op);
-		if (retval) {
-			com_err(ctx->program_name, retval,
-			    _("while retrying to write block bitmaps for %s"),
-				ctx->device_name);
-			fatal_error(ctx, 0);
-		}
-	}
-
-	if (ext2fs_test_ib_dirty(fs)) {
-		old_op = ehandler_operation(_("writing inode bitmaps"));
-		retval = ext2fs_write_inode_bitmap(fs);
-		ehandler_operation(old_op);
-		if (retval) {
-			com_err(ctx->program_name, retval,
-			    _("while retrying to write inode bitmaps for %s"),
-				ctx->device_name);
-			fatal_error(ctx, 0);
-		}
+	old_op = ehandler_operation(_("writing block and inode bitmaps"));
+	retval = ext2fs_write_bitmaps(fs);
+	ehandler_operation(old_op);
+	if (retval) {
+		com_err(ctx->program_name, retval,
+			_("while rewriting block and inode bitmaps for %s"),
+			ctx->device_name);
+		fatal_error(ctx, 0);
 	}
 }
 
@@ -267,6 +260,7 @@ void preenhalt(e2fsck_t ctx)
 	fprintf(stderr, _("\n\n%s: UNEXPECTED INCONSISTENCY; "
 		"RUN fsck MANUALLY.\n\t(i.e., without -a or -p options)\n"),
 	       ctx->device_name);
+	ctx->flags |= E2F_FLAG_EXITING;
 	if (fs != NULL) {
 		fs->super->s_state |= EXT2_ERROR_FS;
 		ext2fs_mark_super_dirty(fs);
@@ -276,12 +270,13 @@ void preenhalt(e2fsck_t ctx)
 }
 
 #ifdef RESOURCE_TRACK
-void init_resource_track(struct resource_track *track)
+void init_resource_track(struct resource_track *track, io_channel channel)
 {
 #ifdef HAVE_GETRUSAGE
 	struct rusage r;
 #endif
-	
+	io_stats io_start = 0;
+
 	track->brk_start = sbrk(0);
 	gettimeofday(&track->time_start, 0);
 #ifdef HAVE_GETRUSAGE
@@ -295,6 +290,14 @@ void init_resource_track(struct resource_track *track)
 	track->user_start.tv_sec = track->user_start.tv_usec = 0;
 	track->system_start.tv_sec = track->system_start.tv_usec = 0;
 #endif
+	track->bytes_read = 0;
+	track->bytes_written = 0;
+	if (channel && channel->manager && channel->manager->get_stats)
+		channel->manager->get_stats(channel, &io_start);
+	if (io_start) {
+		track->bytes_read = io_start->bytes_read;
+		track->bytes_written = io_start->bytes_written;
+	}
 }
 
 #ifdef __GNUC__
@@ -310,7 +313,8 @@ static _INLINE_ float timeval_subtract(struct timeval *tv1,
 		((float) (tv1->tv_usec - tv2->tv_usec)) / 1000000);
 }
 
-void print_resource_track(const char *desc, struct resource_track *track)
+void print_resource_track(e2fsck_t ctx, const char *desc,
+			  struct resource_track *track, io_channel channel)
 {
 #ifdef HAVE_GETRUSAGE
 	struct rusage r;
@@ -320,22 +324,28 @@ void print_resource_track(const char *desc, struct resource_track *track)
 #endif
 	struct timeval time_end;
 
+	if ((desc && !(ctx->options & E2F_OPT_TIME2)) ||
+	    (!desc && !(ctx->options & E2F_OPT_TIME)))
+		return;
+
+	e2fsck_clear_progbar(ctx);
 	gettimeofday(&time_end, 0);
 
 	if (desc)
 		printf("%s: ", desc);
 
 #ifdef HAVE_MALLINFO
-#define kbytes(x)	(((x) + 1023) / 1024)
-	
+#define kbytes(x)	(((unsigned long)(x) + 1023) / 1024)
+
 	malloc_info = mallinfo();
-	printf(_("Memory used: %dk/%dk (%dk/%dk), "),
+	printf(_("Memory used: %luk/%luk (%luk/%luk), "),
 	       kbytes(malloc_info.arena), kbytes(malloc_info.hblkhd),
 	       kbytes(malloc_info.uordblks), kbytes(malloc_info.fordblks));
 #else
-	printf(_("Memory used: %d, "),
-	       (int) (((char *) sbrk(0)) - ((char *) track->brk_start)));
-#endif	
+	printf(_("Memory used: %lu, "),
+	       (unsigned long) (((char *) sbrk(0)) - 
+				((char *) track->brk_start)));
+#endif
 #ifdef HAVE_GETRUSAGE
 	getrusage(RUSAGE_SELF, &r);
 
@@ -347,6 +357,26 @@ void print_resource_track(const char *desc, struct resource_track *track)
 	printf(_("elapsed time: %6.3f\n"),
 	       timeval_subtract(&time_end, &track->time_start));
 #endif
+#define mbytes(x)	(((x) + 1048575) / 1048576)
+	if (channel && channel->manager && channel->manager->get_stats) {
+		io_stats delta = 0;
+		unsigned long long bytes_read = 0;
+		unsigned long long bytes_written = 0;
+
+		if (desc)
+			printf("%s: ", desc);
+
+		channel->manager->get_stats(channel, &delta);
+		if (delta) {
+			bytes_read = delta->bytes_read - track->bytes_read;
+			bytes_written = delta->bytes_written -
+				track->bytes_written;
+		}
+		printf("I/O read: %lluMB, write: %lluMB, rate: %.2fMB/s\n",
+		       mbytes(bytes_read), mbytes(bytes_written),
+		       (double)mbytes(bytes_read + bytes_written) /
+		       timeval_subtract(&time_end, &track->time_start));
+	}
 }
 #endif /* RESOURCE_TRACK */
 
@@ -358,7 +388,21 @@ void e2fsck_read_inode(e2fsck_t ctx, unsigned long ino,
 	retval = ext2fs_read_inode(ctx->fs, ino, inode);
 	if (retval) {
 		com_err("ext2fs_read_inode", retval,
-			_("while reading inode %ld in %s"), ino, proc);
+			_("while reading inode %lu in %s"), ino, proc);
+		fatal_error(ctx, 0);
+	}
+}
+
+void e2fsck_read_inode_full(e2fsck_t ctx, unsigned long ino,
+			    struct ext2_inode *inode, int bufsize,
+			    const char *proc)
+{
+	int retval;
+
+	retval = ext2fs_read_inode_full(ctx->fs, ino, inode, bufsize);
+	if (retval) {
+		com_err("ext2fs_read_inode_full", retval,
+			_("while reading inode %lu in %s"), ino, proc);
 		fatal_error(ctx, 0);
 	}
 }
@@ -372,7 +416,7 @@ extern void e2fsck_write_inode_full(e2fsck_t ctx, unsigned long ino,
 	retval = ext2fs_write_inode_full(ctx->fs, ino, inode, bufsize);
 	if (retval) {
 		com_err("ext2fs_write_inode", retval,
-			_("while writing inode %ld in %s"), ino, proc);
+			_("while writing inode %lu in %s"), ino, proc);
 		fatal_error(ctx, 0);
 	}
 }
@@ -385,7 +429,7 @@ extern void e2fsck_write_inode(e2fsck_t ctx, unsigned long ino,
 	retval = ext2fs_write_inode(ctx->fs, ino, inode);
 	if (retval) {
 		com_err("ext2fs_write_inode", retval,
-			_("while writing inode %ld in %s"), ino, proc);
+			_("while writing inode %lu in %s"), ino, proc);
 		fatal_error(ctx, 0);
 	}
 }
@@ -409,7 +453,7 @@ blk_t get_backup_sb(e2fsck_t ctx, ext2_filsys fs, const char *name,
 	void			*buf = NULL;
 	int			blocksize;
 	blk_t			superblock, ret_sb = 8193;
-	
+
 	if (fs && fs->super) {
 		ret_sb = (fs->super->s_blocks_per_group +
 			  fs->super->s_first_data_block);
@@ -419,7 +463,7 @@ blk_t get_backup_sb(e2fsck_t ctx, ext2_filsys fs, const char *name,
 		}
 		return ret_sb;
 	}
-		
+
 	if (ctx) {
 		if (ctx->blocksize) {
 			ret_sb = ctx->blocksize * 8;
@@ -451,7 +495,7 @@ blk_t get_backup_sb(e2fsck_t ctx, ext2_filsys fs, const char *name,
 		if (io_channel_read_blk(io, superblock,
 					-SUPERBLOCK_SIZE, buf))
 			continue;
-#ifdef EXT2FS_ENABLE_SWAPFS
+#ifdef WORDS_BIGENDIAN
 		if (sb->s_magic == ext2fs_swab16(EXT2_SUPER_MAGIC))
 			ext2fs_swap_super(sb);
 #endif
@@ -484,21 +528,184 @@ int ext2_file_type(unsigned int mode)
 
 	if (LINUX_S_ISDIR(mode))
 		return EXT2_FT_DIR;
-	
+
 	if (LINUX_S_ISCHR(mode))
 		return EXT2_FT_CHRDEV;
-	
+
 	if (LINUX_S_ISBLK(mode))
 		return EXT2_FT_BLKDEV;
-	
+
 	if (LINUX_S_ISLNK(mode))
 		return EXT2_FT_SYMLINK;
 
 	if (LINUX_S_ISFIFO(mode))
 		return EXT2_FT_FIFO;
-	
+
 	if (LINUX_S_ISSOCK(mode))
 		return EXT2_FT_SOCK;
-	
+
 	return 0;
+}
+
+#define STRIDE_LENGTH 8
+/*
+ * Helper function which zeros out _num_ blocks starting at _blk_.  In
+ * case of an error, the details of the error is returned via _ret_blk_
+ * and _ret_count_ if they are non-NULL pointers.  Returns 0 on
+ * success, and an error code on an error.
+ *
+ * As a special case, if the first argument is NULL, then it will
+ * attempt to free the static zeroizing buffer.  (This is to keep
+ * programs that check for memory leaks happy.)
+ */
+errcode_t e2fsck_zero_blocks(ext2_filsys fs, blk_t blk, int num,
+			     blk_t *ret_blk, int *ret_count)
+{
+	int		j, count, next_update, next_update_incr;
+	static char	*buf;
+	errcode_t	retval;
+
+	/* If fs is null, clean up the static buffer and return */
+	if (!fs) {
+		if (buf) {
+			free(buf);
+			buf = 0;
+		}
+		return 0;
+	}
+	/* Allocate the zeroizing buffer if necessary */
+	if (!buf) {
+		buf = malloc(fs->blocksize * STRIDE_LENGTH);
+		if (!buf) {
+			com_err("malloc", ENOMEM,
+				_("while allocating zeroizing buffer"));
+			exit(1);
+		}
+		memset(buf, 0, fs->blocksize * STRIDE_LENGTH);
+	}
+	/* OK, do the write loop */
+	next_update = 0;
+	next_update_incr = num / 100;
+	if (next_update_incr < 1)
+		next_update_incr = 1;
+	for (j = 0; j < num; j += STRIDE_LENGTH, blk += STRIDE_LENGTH) {
+		count = num - j;
+		if (count > STRIDE_LENGTH)
+			count = STRIDE_LENGTH;
+		retval = io_channel_write_blk(fs->io, blk, count, buf);
+		if (retval) {
+			if (ret_count)
+				*ret_count = count;
+			if (ret_blk)
+				*ret_blk = blk;
+			return retval;
+		}
+	}
+	return 0;
+}
+
+/*
+ * Check to see if a filesystem is in /proc/filesystems.
+ * Returns 1 if found, 0 if not
+ */
+int fs_proc_check(const char *fs_name)
+{
+	FILE	*f;
+	char	buf[80], *cp, *t;
+
+	f = fopen("/proc/filesystems", "r");
+	if (!f)
+		return (0);
+	while (!feof(f)) {
+		if (!fgets(buf, sizeof(buf), f))
+			break;
+		cp = buf;
+		if (!isspace(*cp)) {
+			while (*cp && !isspace(*cp))
+				cp++;
+		}
+		while (*cp && isspace(*cp))
+			cp++;
+		if ((t = strchr(cp, '\n')) != NULL)
+			*t = 0;
+		if ((t = strchr(cp, '\t')) != NULL)
+			*t = 0;
+		if ((t = strchr(cp, ' ')) != NULL)
+			*t = 0;
+		if (!strcmp(fs_name, cp)) {
+			fclose(f);
+			return (1);
+		}
+	}
+	fclose(f);
+	return (0);
+}
+
+/*
+ * Check to see if a filesystem is available as a module
+ * Returns 1 if found, 0 if not
+ */
+int check_for_modules(const char *fs_name)
+{
+#ifdef __linux__
+	struct utsname	uts;
+	FILE		*f;
+	char		buf[1024], *cp, *t;
+	int		i;
+
+	if (uname(&uts))
+		return (0);
+	snprintf(buf, sizeof(buf), "/lib/modules/%s/modules.dep", uts.release);
+
+	f = fopen(buf, "r");
+	if (!f)
+		return (0);
+	while (!feof(f)) {
+		if (!fgets(buf, sizeof(buf), f))
+			break;
+		if ((cp = strchr(buf, ':')) != NULL)
+			*cp = 0;
+		else
+			continue;
+		if ((cp = strrchr(buf, '/')) != NULL)
+			cp++;
+		else
+			cp = buf;
+		i = strlen(cp);
+		if (i > 3) {
+			t = cp + i - 3;
+			if (!strcmp(t, ".ko"))
+				*t = 0;
+		}
+		if (!strcmp(cp, fs_name)) {
+			fclose(f);
+			return (1);
+		}
+	}
+	fclose(f);
+#endif /* __linux__ */
+	return (0);
+}
+
+/*
+ * Helper function that does the right thing if write returns a
+ * partial write, or an EGAIN/EINTR error.
+ */
+int write_all(int fd, char *buf, size_t count)
+{
+	ssize_t ret;
+	int c = 0;
+
+	while (count > 0) {
+		ret = write(fd, buf, count);
+		if (ret < 0) {
+			if ((errno == EAGAIN) || (errno == EINTR))
+				continue;
+			return -1;
+		}
+		count -= ret;
+		buf += ret;
+		c += ret;
+	}
+	return c;
 }

@@ -25,6 +25,7 @@
 #if HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+#include <dirent.h>
 #if HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
@@ -38,10 +39,6 @@
 
 #include "blkidP.h"
 
-#ifdef HAVE_DEVMAPPER
-#include <libdevmapper.h>
-#endif
-
 /*
  * Find a dev struct in the cache by device name, if available.
  *
@@ -51,7 +48,7 @@
 blkid_dev blkid_get_dev(blkid_cache cache, const char *devname, int flags)
 {
 	blkid_dev dev = NULL, tmp;
-	struct list_head *p;
+	struct list_head *p, *pnext;
 
 	if (!cache || !devname)
 		return NULL;
@@ -61,13 +58,15 @@ blkid_dev blkid_get_dev(blkid_cache cache, const char *devname, int flags)
 		if (strcmp(tmp->bid_name, devname))
 			continue;
 
-		DBG(DEBUG_DEVNAME, 
+		DBG(DEBUG_DEVNAME,
 		    printf("found devname %s in cache\n", tmp->bid_name));
 		dev = tmp;
 		break;
 	}
 
 	if (!dev && (flags & BLKID_DEV_CREATE)) {
+		if (access(devname, F_OK) < 0)
+			return NULL;
 		dev = blkid_new_dev();
 		if (!dev)
 			return NULL;
@@ -78,14 +77,104 @@ blkid_dev blkid_get_dev(blkid_cache cache, const char *devname, int flags)
 		cache->bic_flags |= BLKID_BIC_FL_CHANGED;
 	}
 
-	if (flags & BLKID_DEV_VERIFY)
+	if (flags & BLKID_DEV_VERIFY) {
 		dev = blkid_verify(cache, dev);
+		if (!dev || !(dev->bid_flags & BLKID_BID_FL_VERIFIED))
+			return dev;
+		/*
+		 * If the device is verified, then search the blkid
+		 * cache for any entries that match on the type, uuid,
+		 * and label, and verify them; if a cache entry can
+		 * not be verified, then it's stale and so we remove
+		 * it.
+		 */
+		list_for_each_safe(p, pnext, &cache->bic_devs) {
+			blkid_dev dev2;
+			if (!p)
+				break;
+			dev2 = list_entry(p, struct blkid_struct_dev, bid_devs);
+			if (dev2->bid_flags & BLKID_BID_FL_VERIFIED)
+				continue;
+			if (!dev->bid_type || !dev2->bid_type ||
+			    strcmp(dev->bid_type, dev2->bid_type))
+				continue;
+			if (dev->bid_label && dev2->bid_label &&
+			    strcmp(dev->bid_label, dev2->bid_label))
+				continue;
+			if (dev->bid_uuid && dev2->bid_uuid &&
+			    strcmp(dev->bid_uuid, dev2->bid_uuid))
+				continue;
+			if ((dev->bid_label && !dev2->bid_label) ||
+			    (!dev->bid_label && dev2->bid_label) ||
+			    (dev->bid_uuid && !dev2->bid_uuid) ||
+			    (!dev->bid_uuid && dev2->bid_uuid))
+				continue;
+			dev2 = blkid_verify(cache, dev2);
+			if (dev2 && !(dev2->bid_flags & BLKID_BID_FL_VERIFIED))
+				blkid_free_dev(dev2);
+		}
+	}
 	return dev;
 }
 
-#ifdef HAVE_DEVMAPPER
-static int dm_device_is_leaf(const dev_t dev);
-#endif
+/* Directories where we will try to search for device names */
+static const char *dirlist[] = { "/dev", "/devfs", "/devices", NULL };
+
+static int is_dm_leaf(const char *devname)
+{
+	struct dirent	*de, *d_de;
+	DIR		*dir, *d_dir;
+	char		path[256];
+	int		ret = 1;
+
+	if ((dir = opendir("/sys/block")) == NULL)
+		return 0;
+	while ((de = readdir(dir)) != NULL) {
+		if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..") ||
+		    !strcmp(de->d_name, devname) ||
+		    strncmp(de->d_name, "dm-", 3) ||
+		    strlen(de->d_name) > sizeof(path)-32)
+			continue;
+		sprintf(path, "/sys/block/%s/slaves", de->d_name);
+		if ((d_dir = opendir(path)) == NULL)
+			continue;
+		while ((d_de = readdir(d_dir)) != NULL) {
+			if (!strcmp(d_de->d_name, devname)) {
+				ret = 0;
+				break;
+			}
+		}
+		closedir(d_dir);
+		if (!ret)
+			break;
+	}
+	closedir(dir);
+	return ret;
+}
+
+/*
+ * Since 2.6.29 (patch 784aae735d9b0bba3f8b9faef4c8b30df3bf0128) kernel sysfs
+ * provides the real DM device names in /sys/block/<ptname>/dm/name
+ */
+static char *get_dm_name(const char *ptname)
+{
+	FILE	*f;
+	size_t	sz;
+	char	path[256], name[256], *res = NULL;
+
+	snprintf(path, sizeof(path), "/sys/block/%s/dm/name", ptname);
+	if ((f = fopen(path, "r")) == NULL)
+		return NULL;
+
+	/* read "<name>\n" from sysfs */
+	if (fgets(name, sizeof(name), f) && (sz = strlen(name)) > 1) {
+		name[sz - 1] = '\0';
+		snprintf(path, sizeof(path), "/dev/mapper/%s", name);
+		res = blkid_strdup(path);
+	}
+	fclose(f);
+	return res;
+}
 
 /*
  * Probe a single block device to add to the device cache.
@@ -94,27 +183,36 @@ static void probe_one(blkid_cache cache, const char *ptname,
 		      dev_t devno, int pri, int only_if_new)
 {
 	blkid_dev dev = NULL;
-	struct list_head *p;
+	struct list_head *p, *pnext;
 	const char **dir;
 	char *devname = NULL;
 
 	/* See if we already have this device number in the cache. */
-	list_for_each(p, &cache->bic_devs) {
+	list_for_each_safe(p, pnext, &cache->bic_devs) {
 		blkid_dev tmp = list_entry(p, struct blkid_struct_dev,
 					   bid_devs);
-#ifdef HAVE_DEVMAPPER
-		if (!dm_device_is_leaf(devno))
-			continue;
-#endif
 		if (tmp->bid_devno == devno) {
-			if (only_if_new)
+			if (only_if_new && !access(tmp->bid_name, F_OK))
 				return;
 			dev = blkid_verify(cache, tmp);
-			break;
+			if (dev && (dev->bid_flags & BLKID_BID_FL_VERIFIED))
+				break;
+			dev = 0;
 		}
 	}
 	if (dev && dev->bid_devno == devno)
 		goto set_pri;
+
+	/* Try to translate private device-mapper dm-<N> names
+	 * to standard /dev/mapper/<name>.
+	 */
+	if (!strncmp(ptname, "dm-", 3) && isdigit(ptname[3])) {
+		devname = get_dm_name(ptname);
+		if (!devname)
+			blkid__scan_dir("/dev/mapper", devno, 0, &devname);
+		if (devname)
+			goto get_dev;
+	}
 
 	/*
 	 * Take a quick look at /dev/ptname for the device number.  We check
@@ -122,7 +220,7 @@ static void probe_one(blkid_cache cache, const char *ptname,
 	 * the stat information doesn't check out, use blkid_devno_to_devname()
 	 * to find it via an exhaustive search for the device major/minor.
 	 */
-	for (dir = blkid_devdirs; *dir; dir++) {
+	for (dir = dirlist; *dir; dir++) {
 		struct stat st;
 		char device[256];
 
@@ -131,204 +229,38 @@ static void probe_one(blkid_cache cache, const char *ptname,
 		    dev->bid_devno == devno)
 			goto set_pri;
 
-		if (stat(device, &st) == 0 && S_ISBLK(st.st_mode) && 
+		if (stat(device, &st) == 0 && S_ISBLK(st.st_mode) &&
 		    st.st_rdev == devno) {
 			devname = blkid_strdup(device);
-			break;
+			goto get_dev;
 		}
 	}
+	/* Do a short-cut scan of /dev/mapper first */
+	if (!devname)
+		devname = get_dm_name(ptname);
+	if (!devname)
+		blkid__scan_dir("/dev/mapper", devno, 0, &devname);
 	if (!devname) {
 		devname = blkid_devno_to_devname(devno);
 		if (!devname)
 			return;
 	}
+get_dev:
 	dev = blkid_get_dev(cache, devname, BLKID_DEV_NORMAL);
 	free(devname);
-
 set_pri:
-	if (!pri && !strncmp(ptname, "md", 2))
-		pri = BLKID_PRI_MD;
-	if (dev)
-		dev->bid_pri = pri;
+	if (dev) {
+		if (pri)
+			dev->bid_pri = pri;
+		else if (!strncmp(dev->bid_name, "/dev/mapper/", 11)) {
+			dev->bid_pri = BLKID_PRI_DM;
+			if (is_dm_leaf(ptname))
+				dev->bid_pri += 5;
+		} else if (!strncmp(ptname, "md", 2))
+			dev->bid_pri = BLKID_PRI_MD;
+ 	}
 	return;
 }
-
-#ifdef HAVE_DEVMAPPER
-static void dm_quiet_log(int level __BLKID_ATTR((unused)), 
-			 const char *file __BLKID_ATTR((unused)), 
-			 int line __BLKID_ATTR((unused)),
-			 const char *f __BLKID_ATTR((unused)), ...)
-{
-	return;
-}
-
-/* 
- * device-mapper support 
- */
-static int dm_device_has_dep(const dev_t dev, const char *name)
-{
-	struct dm_task *task;
-	struct dm_deps *deps;
-	struct dm_info info;
-	unsigned int i;
-	int ret = 0;
-
-	task = dm_task_create(DM_DEVICE_DEPS);
-	if (!task)
-		goto out;
-
-	if (!dm_task_set_name(task, name))
-		goto out;
-
-	if (!dm_task_run(task))
-		goto out;
-
-	if (!dm_task_get_info(task, &info))
-		goto out;
-
-	if  (!info.exists)
-		goto out;
-  
-	deps = dm_task_get_deps(task);
-	if (!deps || deps->count == 0)
-		goto out;
-
-	for (i = 0; i < deps->count; i++) {
-		dev_t dep_dev = deps->device[i];
-
-		if (dev == dep_dev) {
-			ret = 1;
-			goto out;
-		}
-	}
-
-out:
-	if (task)
-		dm_task_destroy(task);
-
-	return ret;
-}
-
-static int dm_device_is_leaf(const dev_t dev)
-{
-	struct dm_task *task;
-	struct dm_names *names;
-	unsigned int next = 0;
-	int n, ret = 1;
-
-	dm_log_init(dm_quiet_log);
-	task = dm_task_create(DM_DEVICE_LIST);
-	if (!task)
-		goto out;
-
-	dm_log_init(0);
-
-	if (!dm_task_run(task))
-		goto out;
-
-	names = dm_task_get_names(task);
-	if (!names || !names->dev)
-		goto out;
-
-	n = 0;
-	do {
-		names = (struct dm_names *) ((char *)names + next);
-
-		if (dm_device_has_dep(dev, names->name))
-			ret = 0;
-
-		next = names->next;
-	} while (next);
-
-out:
-	if (task)
-		dm_task_destroy(task);
-
-	return ret;
-}
-
-static dev_t dm_get_devno(const char *name)
-{
-	struct dm_task *task;
-	struct dm_info info;
-	dev_t ret = 0;
-
-	task = dm_task_create(DM_DEVICE_INFO);
-	if (!task)
-		goto out;
-
-	if (!dm_task_set_name(task, name))
-		goto out;
-
-	if (!dm_task_run(task))
-		goto out;
-
-	if (!dm_task_get_info(task, &info))
-		goto out;
-
-	if (!info.exists)
-		goto out;
-
-	ret = makedev(info.major, info.minor);
-
-out:
-	if (task)
-		dm_task_destroy(task);
-	
-	return ret;
-}
-
-static void dm_probe_all(blkid_cache cache, int only_if_new)
-{
-	struct dm_task *task;
-	struct dm_names *names;
-	unsigned int next = 0;
-	int n;
-
-	dm_log_init(dm_quiet_log);
-	task = dm_task_create(DM_DEVICE_LIST);
-	if (!task)
-		goto out;
-	dm_log_init(0);
-
-	if (!dm_task_run(task))
-		goto out;
-
-	names = dm_task_get_names(task);
-	if (!names || !names->dev)
-		goto out;
-
-	n = 0;
-	do {
-		int rc;
-		char *device = NULL;
-		dev_t dev = 0;
-
-		names = (struct dm_names *) ((char *)names + next);
-
-		rc = asprintf(&device, "mapper/%s", names->name);
-		if (rc < 0)
-			goto try_next;
-
-		dev = dm_get_devno(names->name);
-		if (dev == 0)
-			goto try_next;
-
-		if (!dm_device_is_leaf(dev)) 
-			goto try_next;
-
-		probe_one(cache, device, dev, BLKID_PRI_DM, only_if_new);
-
-try_next:
-		free(device);
-		next = names->next;
-	} while (next);
-
-out:
-	if (task)
-		dm_task_destroy(task);
-}
-#endif /* HAVE_DEVMAPPER */
 
 #define PROC_PARTITIONS "/proc/partitions"
 #define VG_DIR		"/proc/lvm/VGs"
@@ -340,7 +272,6 @@ out:
  * safe thing to do?)
  */
 #ifdef VG_DIR
-#include <dirent.h>
 static dev_t lvm_get_devno(const char *lvm_device)
 {
 	FILE *lvf;
@@ -417,7 +348,7 @@ static void lvm_probe_all(blkid_cache cache, int only_if_new)
 			DBG(DEBUG_DEVNAME, printf("LVM dev %s: devno 0x%04X\n",
 						  lvm_device,
 						  (unsigned int) dev));
-			probe_one(cache, lvm_device, dev, BLKID_PRI_LVM, 
+			probe_one(cache, lvm_device, dev, BLKID_PRI_LVM,
 				  only_if_new);
 			free(lvm_device);
 		}
@@ -471,6 +402,7 @@ static int probe_all(blkid_cache cache, int only_if_new)
 	unsigned long long sz;
 	int lens[2] = { 0, 0 };
 	int which = 0, last = 0;
+	struct list_head *p, *pnext;
 
 	ptnames[0] = ptname0;
 	ptnames[1] = ptname1;
@@ -483,9 +415,6 @@ static int probe_all(blkid_cache cache, int only_if_new)
 		return 0;
 
 	blkid_read_cache(cache);
-#ifdef HAVE_DEVMAPPER
-	dm_probe_all(cache, only_if_new);
-#endif
 	evms_probe_all(cache, only_if_new);
 #ifdef VG_DIR
 	lvm_probe_all(cache, only_if_new);
@@ -528,11 +457,34 @@ static int probe_all(blkid_cache cache, int only_if_new)
 				   ptname, (unsigned int) devs[which]));
 
 			if (sz > 1)
-				probe_one(cache, ptname, devs[which], 0, 
+				probe_one(cache, ptname, devs[which], 0,
 					  only_if_new);
 			lens[which] = 0;	/* mark as checked */
 		}
 
+		/*
+		 * If last was a whole disk and we just found a partition
+		 * on it, remove the whole-disk dev from the cache if
+		 * it exists.
+		 */
+		if (lens[last] && !strncmp(ptnames[last], ptname, lens[last])) {
+			list_for_each_safe(p, pnext, &cache->bic_devs) {
+				blkid_dev tmp;
+
+				/* find blkid dev for the whole-disk devno */
+				tmp = list_entry(p, struct blkid_struct_dev,
+						 bid_devs);
+				if (tmp->bid_devno == devs[last]) {
+					DBG(DEBUG_DEVNAME,
+						printf("freeing %s\n",
+						       tmp->bid_name));
+					blkid_free_dev(tmp);
+					cache->bic_flags |= BLKID_BIC_FL_CHANGED;
+					break;
+				}
+			}
+			lens[last] = 0;
+		}
 		/*
 		 * If last was not checked because it looked like a whole-disk
 		 * dev, and the device's base name has changed,
