@@ -1,7 +1,6 @@
 LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := \
+libext2_blkid_src_files := \
 	cache.c \
 	dev.c \
 	devname.c \
@@ -16,13 +15,13 @@ LOCAL_SRC_FILES := \
 	version.c \
 
 
-LOCAL_MODULE := libext2_blkid
-LOCAL_MODULE_TAGS:= eng
-LOCAL_SYSTEM_SHARED_LIBRARIES := libext2_uuid libc
+libext2_blkid_shared_libraries := libext2_uuid
 
-LOCAL_C_INCLUDES := external/e2fsprogs/lib
+libext2_blkid_system_shared_libraries := libc
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+libext2_blkid_c_includes := external/e2fsprogs/lib
+
+libext2_blkid_cflags := -O2 -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -47,6 +46,28 @@ LOCAL_CFLAGS := -O2 -g -W -Wall \
 	-DHAVE_SYS_TIME_H \
 	-DHAVE_SYSCONF
 
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_blkid_src_files)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_blkid_system_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(libext2_blkid_shared_libraries)
+LOCAL_C_INCLUDES := $(libext2_blkid_c_includes)
+LOCAL_CFLAGS := $(libext2_blkid_cflags)
 LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_blkid
+LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
 
 include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_blkid_src_files)
+LOCAL_SHARED_LIBRARIES := $(libext2_blkid_shared_libraries)
+LOCAL_C_INCLUDES := $(libext2_blkid_c_includes)
+LOCAL_CFLAGS := $(libext2_blkid_cflags)
+LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_blkid_host
+LOCAL_MODULE_STEM := libext2_blkid
+LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
+
+include $(BUILD_HOST_SHARED_LIBRARY)

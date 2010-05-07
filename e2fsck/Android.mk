@@ -3,20 +3,18 @@ LOCAL_PATH := $(call my-dir)
 #########################
 # Build the libext2 profile library
 
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES :=  \
+libext2_profile_src_files :=  \
 	prof_err.c \
 	profile.c
 
-LOCAL_MODULE := libext2_profile
-LOCAL_MODULE_TAGS := eng
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
-	libext2_com_err \
-	libc
+libext2_profile_shared_libraries := \
+	libext2_com_err
 
-LOCAL_C_INCLUDES := external/e2fsprogs/lib
+libext2_profile_system_shared_libraries := libc
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+libext2_profile_c_includes := external/e2fsprogs/lib
+
+libext2_profile_cflags := -O2 -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -41,16 +39,36 @@ LOCAL_CFLAGS := -O2 -g -W -Wall \
 	-DHAVE_SYS_TIME_H \
 	-DHAVE_SYSCONF
 
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_profile_src_files)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_profile_system_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(libext2_profile_shared_libraries)
+LOCAL_C_INCLUDES := $(libext2_profile_c_includes)
+LOCAL_CFLAGS := $(libext2_profile_cflags)
 LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_profile
+LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
 
 include $(BUILD_SHARED_LIBRARY)
 
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_profile_src_files)
+LOCAL_SHARED_LIBRARIES := $(libext2_profile_shared_libraries)
+LOCAL_C_INCLUDES := $(libext2_profile_c_includes)
+LOCAL_CFLAGS := $(libext2_profile_cflags)
+LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_profile_host
+LOCAL_MODULE_STEM := libext2_profile
+LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+
+include $(BUILD_HOST_SHARED_LIBRARY)
 
 #########################
 # Build the e2fsck binary
 
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES :=  \
+e2fsck_src_files :=  \
 	crc32.c \
 	e2fsck.c \
 	dict.c \
@@ -77,21 +95,18 @@ LOCAL_SRC_FILES :=  \
 	rehash.c \
 	region.c
 
-LOCAL_MODULE := e2fsck
-LOCAL_MODULE_TAGS := eng
-
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
+e2fsck_shared_libraries := \
 	libext2fs \
 	libext2_blkid \
 	libext2_uuid \
 	libext2_profile \
 	libext2_com_err \
-	libext2_e2p \
-	libc
+	libext2_e2p
+e2fsck_system_shared_libraries := libc
 
-LOCAL_C_INCLUDES := external/e2fsprogs/lib
+e2fsck_c_includes := external/e2fsprogs/lib
 
-LOCAL_CFLAGS := -O2 -g -W -Wall \
+e2fsck_cflags := -O2 -g -W -Wall \
 	-DHAVE_DIRENT_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_INTTYPES_H \
@@ -121,5 +136,25 @@ LOCAL_CFLAGS := -O2 -g -W -Wall \
 	-DHAVE_SYS_TIME_H \
 	-DHAVE_SYSCONF
 
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(e2fsck_src_files)
+LOCAL_C_INCLUDES := $(e2fsck_c_includes)
+LOCAL_CFLAGS := $(e2fsck_cflags)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(e2fsck_system_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(e2fsck_shared_libraries)
+LOCAL_MODULE := e2fsck
+LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
 include $(BUILD_EXECUTABLE)
 
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(e2fsck_src_files)
+LOCAL_C_INCLUDES := $(e2fsck_c_includes)
+LOCAL_CFLAGS := $(e2fsck_cflags)
+LOCAL_SHARED_LIBRARIES := $(e2fsck_shared_libraries)
+LOCAL_MODULE := e2fsck_host
+LOCAL_MODULE_STEM := e2fsck
+LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+
+include $(BUILD_HOST_EXECUTABLE)
