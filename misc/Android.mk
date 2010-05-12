@@ -18,7 +18,6 @@ mke2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_SYS_IOCTL_H \
 	-DHAVE_SYS_MMAN_H \
 	-DHAVE_SYS_MOUNT_H \
-	-DHAVE_SYS_PRCTL_H \
 	-DHAVE_SYS_RESOURCE_H \
 	-DHAVE_SYS_SELECT_H \
 	-DHAVE_SYS_STAT_H \
@@ -29,14 +28,17 @@ mke2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_MMAP \
 	-DHAVE_UTIME_H \
 	-DHAVE_GETPAGESIZE \
-	-DHAVE_LSEEK64 \
-	-DHAVE_LSEEK64_PROTOTYPE \
 	-DHAVE_EXT2_IOCTLS \
-	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
 	-DHAVE_SYSCONF
+
+mke2fs_cflags_linux := \
+	-DHAVE_LINUX_FD_H \
+	-DHAVE_SYS_PRCTL_H \
+	-DHAVE_LSEEK64 \
+	-DHAVE_LSEEK64_PROTOTYPE
 
 mke2fs_cflags += -DNO_CHECK_BB
 
@@ -54,7 +56,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(mke2fs_src_files)
 LOCAL_C_INCLUDES := $(mke2fs_c_includes)
-LOCAL_CFLAGS := $(mke2fs_cflags)
+LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(mke2fs_system_shared_libraries)
 LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
 LOCAL_MODULE := mke2fs
@@ -65,7 +67,11 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(mke2fs_src_files)
 LOCAL_C_INCLUDES := $(mke2fs_c_includes)
+ifeq ($(HOST_OS),linux)
+LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
+else
 LOCAL_CFLAGS := $(mke2fs_cflags)
+endif
 LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
 LOCAL_MODULE := mke2fs_host
 LOCAL_MODULE_STEM := mke2fs

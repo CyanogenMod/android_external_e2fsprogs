@@ -28,7 +28,6 @@ libext2_blkid_cflags := -O2 -g -W -Wall \
 	-DHAVE_SYS_IOCTL_H \
 	-DHAVE_SYS_MMAN_H \
 	-DHAVE_SYS_MOUNT_H \
-	-DHAVE_SYS_PRCTL_H \
 	-DHAVE_SYS_RESOURCE_H \
 	-DHAVE_SYS_SELECT_H \
 	-DHAVE_SYS_STAT_H \
@@ -38,13 +37,16 @@ libext2_blkid_cflags := -O2 -g -W -Wall \
 	-DHAVE_MMAP \
 	-DHAVE_UTIME_H \
 	-DHAVE_GETPAGESIZE \
-	-DHAVE_LSEEK64 \
-	-DHAVE_LSEEK64_PROTOTYPE \
 	-DHAVE_EXT2_IOCTLS \
-	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
 	-DHAVE_SYSCONF
+
+libext2_blkid_cflags_linux := \
+	-DHAVE_LINUX_FD_H \
+	-DHAVE_SYS_PRCTL_H \
+	-DHAVE_LSEEK64 \
+	-DHAVE_LSEEK64_PROTOTYPE
 
 include $(CLEAR_VARS)
 
@@ -52,7 +54,7 @@ LOCAL_SRC_FILES := $(libext2_blkid_src_files)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_blkid_system_shared_libraries)
 LOCAL_SHARED_LIBRARIES := $(libext2_blkid_shared_libraries)
 LOCAL_C_INCLUDES := $(libext2_blkid_c_includes)
-LOCAL_CFLAGS := $(libext2_blkid_cflags)
+LOCAL_CFLAGS := $(libext2_blkid_cflags) $(libext2_blkid_cflags_linux)
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_blkid
 LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
@@ -64,7 +66,11 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext2_blkid_src_files)
 LOCAL_SHARED_LIBRARIES := $(libext2_blkid_shared_libraries)
 LOCAL_C_INCLUDES := $(libext2_blkid_c_includes)
+ifeq ($(HOST_OS),linux)
+LOCAL_CFLAGS := $(libext2_blkid_cflags) $(libext2_blkid_cflags_linux)
+else
 LOCAL_CFLAGS := $(libext2_blkid_cflags)
+endif
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_blkid_host
 LOCAL_MODULE_STEM := libext2_blkid
