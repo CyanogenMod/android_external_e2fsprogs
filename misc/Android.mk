@@ -146,7 +146,7 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_GETOPT_H
 
 LOCAL_MODULE := badblocks
-LOCAL_MODULE_TAGS := systembuilder
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_SYSTEM_SHARED_LIBRARIES := \
 	libext2fs \
