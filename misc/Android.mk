@@ -57,6 +57,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE := mke2fs.conf
+LOCAL_MODULE_TAGS := eng
 LOCAL_SRC_FILES := mke2fs.conf
 include $(BUILD_PREBUILT)
 
@@ -105,6 +106,9 @@ LOCAL_MODULE_TAGS := eng
 LOCAL_SYSTEM_SHARED_LIBRARIES := \
 	libext2fs \
 	libext2_com_err \
+	libext2_blkid \
+	libext2_e2p \
+	libext2_uuid \
 	libc
 
 include $(BUILD_EXECUTABLE)
