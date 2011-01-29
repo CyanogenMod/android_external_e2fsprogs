@@ -59,7 +59,7 @@ LOCAL_CFLAGS := $(libext2_e2p_cflags)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_e2p_system_shared_libraries)
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_e2p
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -71,6 +71,6 @@ LOCAL_CFLAGS := $(libext2_e2p_cflags)
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_e2p_host
 LOCAL_MODULE_STEM := libext2_e2p
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_SHARED_LIBRARY)

@@ -60,7 +60,7 @@ LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(mke2fs_system_shared_libraries)
 LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
 LOCAL_MODULE := mke2fs
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -75,7 +75,7 @@ endif
 LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
 LOCAL_MODULE := mke2fs_host
 LOCAL_MODULE_STEM := mke2fs
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_EXECUTABLE)
 
@@ -136,7 +136,7 @@ LOCAL_CFLAGS := $(tune2fs_cflags)
 LOCAL_SHARED_LIBRARIES := $(tune2fs_shared_libraries)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(tune2fs_system_shared_libraries)
 LOCAL_MODULE := tune2fs
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
 
@@ -148,7 +148,7 @@ LOCAL_CFLAGS := $(tune2fs_cflags)
 LOCAL_SHARED_LIBRARIES := $(tune2fs_shared_libraries)
 LOCAL_MODULE := tune2fs_host
 LOCAL_MODULE_STEM := tune2fs
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_EXECUTABLE)
 
@@ -207,7 +207,7 @@ LOCAL_CFLAGS := $(badblocks_cflags)
 LOCAL_SHARED_LIBRARIES := $(badblocks_shared_libraries)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(badblocks_system_shared_libraries)
 LOCAL_MODULE := badblocks
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
 
@@ -219,6 +219,6 @@ LOCAL_CFLAGS := $(badblocks_cflags)
 LOCAL_SHARED_LIBRARIES := $(badblocks_shared_libraries)
 LOCAL_MODULE := badblocks_host
 LOCAL_MODULE_STEM := badblocks
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_EXECUTABLE)

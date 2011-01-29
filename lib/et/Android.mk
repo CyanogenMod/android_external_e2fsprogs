@@ -45,7 +45,7 @@ LOCAL_C_INCLUDES := $(libext2_com_err_c_includes)
 LOCAL_CFLAGS := $(libext2_com_err_cflags) $(libext2_com_err_cflags_linux)
 LOCAL_SYSTEM_SHARED_LIBRARIES := libc
 LOCAL_MODULE := libext2_com_err
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
@@ -61,7 +61,7 @@ LOCAL_CFLAGS := $(libext2_com_err_cflags)
 endif
 LOCAL_MODULE := libext2_com_err_host
 LOCAL_MODULE_STEM := libext2_com_err
-LOCAL_MODULE_TAGS := $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_HOST_SHARED_LIBRARY)

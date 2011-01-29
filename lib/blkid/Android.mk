@@ -57,7 +57,7 @@ LOCAL_C_INCLUDES := $(libext2_blkid_c_includes)
 LOCAL_CFLAGS := $(libext2_blkid_cflags) $(libext2_blkid_cflags_linux)
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_blkid
-LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -74,6 +74,6 @@ endif
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_blkid_host
 LOCAL_MODULE_STEM := libext2_blkid
-LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_SHARED_LIBRARY)

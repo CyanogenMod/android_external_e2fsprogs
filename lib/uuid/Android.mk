@@ -50,7 +50,7 @@ LOCAL_C_INCLUDES := $(libext2_uuid_c_includes)
 LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_uuid_system_shared_libraries)
 LOCAL_MODULE := libext2_uuid
-LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
@@ -62,7 +62,7 @@ LOCAL_C_INCLUDES := $(libext2_uuid_c_includes)
 LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_MODULE := libext2_uuid_host
 LOCAL_MODULE_STEM := libext2_uuid
-LOCAL_MODULE_TAGS:= $(use_e2fsprog_module_tags)
+LOCAL_MODULE_TAGS := optional
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_HOST_SHARED_LIBRARY)
