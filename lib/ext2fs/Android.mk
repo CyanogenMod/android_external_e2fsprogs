@@ -1,4 +1,5 @@
 LOCAL_PATH := $(call my-dir)
+
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
@@ -8,7 +9,6 @@ LOCAL_SRC_FILES := \
 	alloc_stats.c \
 	alloc_tables.c \
 	badblocks.c \
-	bb_compat.c \
 	bb_inode.c \
 	bitmaps.c \
 	bitops.c \
@@ -48,6 +48,7 @@ LOCAL_SRC_FILES := \
 	lookup.c \
 	mkdir.c \
 	mkjournal.c \
+	namei.c \
 	native.c \
 	newdir.c \
 	openfs.c \
@@ -61,21 +62,13 @@ LOCAL_SRC_FILES := \
 	unix_io.c \
 	unlink.c \
 	valid_blk.c \
-	version.c \
-	write_bb_file.c
+	version.c
 
 # get rid of this?!
 LOCAL_SRC_FILES += test_io.c
 
 LOCAL_MODULE := libext2fs
 LOCAL_MODULE_TAGS := eng
-
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
-	libext2_com_err \
-	libext2_uuid \
-	libext2_blkid \
-	libext2_e2p \
-	libc
 
 LOCAL_C_INCLUDES := external/e2fsprogs/lib
 
@@ -104,5 +97,23 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 
 LOCAL_PRELINK_MODULE := false
 
-include $(BUILD_SHARED_LIBRARY)
+LOCAL_SYSTEM_SHARED_LIBRARIES := \
+	libc
 
+ifneq ($(BUILD_E2FSCK),true)
+LOCAL_SYSTEM_SHARED_LIBRARIES += \
+	libext2_com_err \
+	libext2_uuid \
+	libext2_blkid \
+	libext2_e2p
+
+include $(BUILD_SHARED_LIBRARY)
+else
+LOCAL_STATIC_LIBRARIES := \
+	libext2_com_err \
+	libext2_uuid \
+	libext2_blkid \
+	libext2_e2p
+
+include $(BUILD_STATIC_LIBRARY)
+endif

@@ -1,4 +1,5 @@
 LOCAL_PATH := $(call my-dir)
+
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
@@ -45,4 +46,8 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 
 LOCAL_PRELINK_MODULE := false
 
+ifneq ($(BUILD_E2FSCK),true)
 include $(BUILD_SHARED_LIBRARY)
+else
+include $(BUILD_STATIC_LIBRARY)
+endif

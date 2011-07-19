@@ -89,6 +89,7 @@
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
+#include <sys/limits.h>
 
 #include "uuidP.h"
 #include "uuidd.h"
@@ -456,7 +457,7 @@ static void close_all_fds(void)
 	getrlimit(RLIMIT_NOFILE, &rl);
 	max = rl.rlim_cur;
 #else
-	max = 256;
+	max = OPEN_MAX;
 #endif
 
 	for (i=0; i < max; i++) {
