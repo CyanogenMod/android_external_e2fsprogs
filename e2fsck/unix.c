@@ -234,8 +234,8 @@ static void check_mount(e2fsck_t ctx)
 	if (!ctx->interactive)
 		fatal_error(ctx, _("Cannot continue, aborting.\n\n"));
 	printf(_("\n\n\007\007\007\007WARNING!!!  "
-	       "Running e2fsck on a mounted filesystem may cause\n"
-	       "SEVERE filesystem damage.\007\007\007\n\n"));
+	       "The filesystem is mounted.   If you continue you ***WILL***\n"
+	       "cause ***SEVERE*** filesystem damage.\007\007\007\n\n"));
 	cont = ask_yn(_("Do you really want to continue"), -1);
 	if (!cont) {
 		printf (_("check aborted.\n"));
@@ -295,8 +295,13 @@ static void check_if_skip(e2fsck_t ctx)
 	long next_check;
 	int batt = is_on_batt();
 	int defer_check_on_battery;
+	int broken_system_clock;
 	time_t lastcheck;
 
+	profile_get_boolean(ctx->profile, "options", "broken_system_clock",
+			    0, 0, &broken_system_clock);
+	if (ctx->flags & E2F_FLAG_TIME_INSANE)
+		broken_system_clock = 1;
 	profile_get_boolean(ctx->profile, "options",
 			    "defer_check_on_battery", 0, 1,
 			    &defer_check_on_battery);
@@ -324,11 +329,12 @@ static void check_if_skip(e2fsck_t ctx)
 		if (batt && (fs->super->s_mnt_count <
 			     (unsigned) fs->super->s_max_mnt_count*2))
 			reason = 0;
-	} else if (fs->super->s_checkinterval && (ctx->now < lastcheck)) {
+	} else if (!broken_system_clock && fs->super->s_checkinterval &&
+		   (ctx->now < lastcheck)) {
 		reason = _(" has filesystem last checked time in the future");
 		if (batt)
 			reason = 0;
-	} else if (fs->super->s_checkinterval &&
+	} else if (!broken_system_clock && fs->super->s_checkinterval &&
 		   ((ctx->now - lastcheck) >=
 		    ((time_t) fs->super->s_checkinterval))) {
 		reason = _(" has gone %u days without being checked");
@@ -354,7 +360,7 @@ static void check_if_skip(e2fsck_t ctx)
 		if (next_check <= 0)
 			next_check = 1;
 	}
-	if (fs->super->s_checkinterval &&
+	if (!broken_system_clock && fs->super->s_checkinterval &&
 	    ((ctx->now - fs->super->s_lastcheck) >= fs->super->s_checkinterval))
 		next_check = 1;
 	if (next_check <= 5) {
@@ -793,8 +799,23 @@ static errcode_t PRS(int argc, char *argv[], e2fsck_t *ret_ctx)
 		return 0;
 	if (optind != argc - 1)
 		usage(ctx);
-	if ((ctx->options & E2F_OPT_NO) && !bad_blocks_file &&
-	    !cflag && !(ctx->options & E2F_OPT_COMPRESS_DIRS))
+	if ((ctx->options & E2F_OPT_NO) &&
+	    (ctx->options & E2F_OPT_COMPRESS_DIRS)) {
+		com_err(ctx->program_name, 0,
+			_("The -n and -D options are incompatible."));
+		fatal_error(ctx, 0);
+	}
+	if ((ctx->options & E2F_OPT_NO) && cflag) {
+		com_err(ctx->program_name, 0,
+			_("The -n and -c options are incompatible."));
+		fatal_error(ctx, 0);
+	}
+	if ((ctx->options & E2F_OPT_NO) && bad_blocks_file) {
+		com_err(ctx->program_name, 0,
+			_("The -n and -l/-L options are incompatible."));
+		fatal_error(ctx, 0);
+	}
+	if (ctx->options & E2F_OPT_NO)
 		ctx->options |= E2F_OPT_READONLY;
 
 	ctx->io_options = strchr(argv[optind], '?');
@@ -1110,9 +1131,9 @@ failure:
 		__u32 blocksize = EXT2_BLOCK_SIZE(fs->super);
 		int need_restart = 0;
 
-		pctx.errcode = ext2fs_get_device_size(ctx->filesystem_name,
-						      blocksize,
-						      &ctx->num_blocks);
+		pctx.errcode = ext2fs_get_device_size2(ctx->filesystem_name,
+						       blocksize,
+						       &ctx->num_blocks);
 		/*
 		 * The floppy driver refuses to allow anyone else to
 		 * open the device if has been opened with O_EXCL;
@@ -1124,9 +1145,9 @@ failure:
 			ext2fs_close(fs);
 			need_restart++;
 			pctx.errcode =
-				ext2fs_get_device_size(ctx->filesystem_name,
-						       blocksize,
-						       &ctx->num_blocks);
+				ext2fs_get_device_size2(ctx->filesystem_name,
+							blocksize,
+							&ctx->num_blocks);
 		}
 		if (pctx.errcode == EXT2_ET_UNIMPLEMENTED)
 			ctx->num_blocks = 0;
@@ -1422,12 +1443,14 @@ no_journal:
 			} else
 				sb->s_state &= ~EXT2_VALID_FS;
 			sb->s_mnt_count = 0;
-			sb->s_lastcheck = ctx->now;
+			if (!(ctx->flags & E2F_FLAG_TIME_INSANE))
+				sb->s_lastcheck = ctx->now;
 			ext2fs_mark_super_dirty(fs);
 		}
 	}
 
-	if (sb->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM &&
+	if ((run_result & E2F_FLAG_CANCEL) == 0 &&
+	    sb->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM &&
 	    !(ctx->options & E2F_OPT_READONLY)) {
 		retval = ext2fs_set_gdt_csum(ctx->fs);
 		if (retval) {

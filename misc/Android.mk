@@ -2,25 +2,22 @@ LOCAL_PATH := $(call my-dir)
 
 #########################################################################
 # Build mke2fs
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := \
+mke2fs_src_files := \
 	mke2fs.c \
 	util.c \
 	default_profile.c
 
-LOCAL_C_INCLUDES := \
+mke2fs_c_includes := \
 	external/e2fsprogs/lib \
 	external/e2fsprogs/e2fsck
 
-LOCAL_CFLAGS := -Os -g -W -Wall \
+mke2fs_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
 	-DHAVE_SYS_IOCTL_H \
 	-DHAVE_SYS_MMAN_H \
 	-DHAVE_SYS_MOUNT_H \
-	-DHAVE_SYS_PRCTL_H \
 	-DHAVE_SYS_RESOURCE_H \
 	-DHAVE_SYS_SELECT_H \
 	-DHAVE_SYS_STAT_H \
@@ -31,28 +28,56 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_MMAP \
 	-DHAVE_UTIME_H \
 	-DHAVE_GETPAGESIZE \
-	-DHAVE_LSEEK64 \
-	-DHAVE_LSEEK64_PROTOTYPE \
 	-DHAVE_EXT2_IOCTLS \
-	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
-	-DHAVE_GETOPT_H
+	-DHAVE_GETOPT_H \
+	-DHAVE_SYS_TIME_H \
+	-DHAVE_SYSCONF
 
-LOCAL_CFLAGS += -DNO_CHECK_BB
+mke2fs_cflags_linux := \
+	-DHAVE_LINUX_FD_H \
+	-DHAVE_SYS_PRCTL_H \
+	-DHAVE_LSEEK64 \
+	-DHAVE_LSEEK64_PROTOTYPE
 
-LOCAL_MODULE := mke2fs
-LOCAL_MODULE_TAGS := eng
+mke2fs_cflags += -DNO_CHECK_BB
 
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
+mke2fs_shared_libraries := \
 	libext2fs \
 	libext2_blkid \
 	libext2_uuid \
 	libext2_profile \
 	libext2_com_err \
-	libext2_e2p \
-	libc
+	libext2_e2p
 
+mke2fs_system_shared_libraries := libc
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(mke2fs_src_files)
+LOCAL_C_INCLUDES := $(mke2fs_c_includes)
+LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(mke2fs_system_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
+LOCAL_MODULE := mke2fs
+LOCAL_MODULE_TAGS := eng
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(mke2fs_src_files)
+LOCAL_C_INCLUDES := $(mke2fs_c_includes)
+ifeq ($(HOST_OS),linux)
+LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
+else
+LOCAL_CFLAGS := $(mke2fs_cflags)
+endif
+LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
+LOCAL_MODULE := mke2fs_host
+LOCAL_MODULE_STEM := mke2fs
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE_CLASS := ETC
@@ -64,17 +89,15 @@ include $(BUILD_PREBUILT)
 ###########################################################################
 # Build tune2fs
 #
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := \
+tune2fs_src_files := \
 	tune2fs.c \
 	util.c
 
-LOCAL_C_INCLUDES := \
+tune2fs_c_includes := \
 	external/e2fsprogs/lib \
 	external/e2fsprogs/e2fsck
 
-LOCAL_CFLAGS := -Os -g -W -Wall \
+tune2fs_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -97,34 +120,57 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_EXT2_IOCTLS \
 	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
-	-DHAVE_GETOPT_H
+	-DHAVE_GETOPT_H \
+	-DHAVE_SYS_TIME_H \
+	-DHAVE_SYSCONF
 
-LOCAL_CFLAGS += -DNO_CHECK_BB
+tune2fs_cflags += -DNO_CHECK_BB
 
-LOCAL_MODULE := tune2fs
-LOCAL_MODULE_TAGS := eng
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
+tune2fs_shared_libraries := \
 	libext2fs \
 	libext2_com_err \
 	libext2_blkid \
-	libext2_e2p \
 	libext2_uuid \
-	libc
+	libext2_e2p
+
+tune2fs_system_shared_libraries := libc
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(tune2fs_src_files)
+LOCAL_C_INCLUDES := $(tune2fs_c_includes)
+LOCAL_CFLAGS := $(tune2fs_cflags)
+LOCAL_SHARED_LIBRARIES := $(tune2fs_shared_libraries)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(tune2fs_system_shared_libraries)
+LOCAL_MODULE := tune2fs
+LOCAL_MODULE_TAGS := eng
 
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(tune2fs_src_files)
+LOCAL_C_INCLUDES := $(tune2fs_c_includes)
+LOCAL_CFLAGS := $(tune2fs_cflags)
+LOCAL_SHARED_LIBRARIES := $(tune2fs_shared_libraries)
+LOCAL_MODULE := tune2fs_host
+LOCAL_MODULE_STEM := tune2fs
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_HOST_EXECUTABLE)
 
 #########################################################################
 # Build badblocks
 #
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := \
+badblocks_src_files := \
 	badblocks.c
 
-LOCAL_C_INCLUDES := \
+badblocks_c_includes := \
 	external/e2fsprogs/lib
 
-LOCAL_CFLAGS := -Os -g -W -Wall \
+badblocks_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -147,60 +193,106 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_EXT2_IOCTLS \
 	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
-	-DHAVE_GETOPT_H
+	-DHAVE_GETOPT_H \
+	-DHAVE_SYS_TIME_H \
+	-DHAVE_SYSCONF
 
-LOCAL_MODULE := badblocks
-LOCAL_MODULE_TAGS := optional
-
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
+badblocks_shared_libraries := \
 	libext2fs \
 	libext2_com_err \
-	libc
+	libext2_uuid \
+	libext2_blkid \
+	libext2_e2p
+
+badblocks_system_shared_libraries := libc
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(badblocks_src_files)
+LOCAL_C_INCLUDES := $(badblocks_c_includes)
+LOCAL_CFLAGS := $(badblocks_cflags)
+LOCAL_SHARED_LIBRARIES := $(badblocks_shared_libraries)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(badblocks_system_shared_libraries)
+LOCAL_MODULE := badblocks
+LOCAL_MODULE_TAGS := eng
 
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(badblocks_src_files)
+LOCAL_C_INCLUDES := $(badblocks_c_includes)
+LOCAL_CFLAGS := $(badblocks_cflags)
+LOCAL_SHARED_LIBRARIES := $(badblocks_shared_libraries)
+LOCAL_MODULE := badblocks_host
+LOCAL_MODULE_STEM := badblocks
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_HOST_EXECUTABLE)
 
 #########################################################################
 # Build e2label
 #
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := \
-	e2label.c
+e2label_src_files := \
+  e2label.c
 
-LOCAL_C_INCLUDES := \
-	external/e2fsprogs/lib
+e2label_c_includes := \
+  external/e2fsprogs/lib
 
-LOCAL_CFLAGS := -Os -g -W -Wall \
-	-DHAVE_UNISTD_H \
-	-DHAVE_ERRNO_H \
-	-DHAVE_NETINET_IN_H \
-	-DHAVE_SYS_IOCTL_H \
-	-DHAVE_SYS_MMAN_H \
-	-DHAVE_SYS_MOUNT_H \
-	-DHAVE_SYS_PRCTL_H \
-	-DHAVE_SYS_RESOURCE_H \
-	-DHAVE_SYS_SELECT_H \
-	-DHAVE_SYS_STAT_H \
-	-DHAVE_SYS_TYPES_H \
-	-DHAVE_STDLIB_H \
-	-DHAVE_STRCASECMP \
-	-DHAVE_STRDUP \
-	-DHAVE_MMAP \
-	-DHAVE_UTIME_H \
-	-DHAVE_GETPAGESIZE \
-	-DHAVE_LSEEK64 \
-	-DHAVE_LSEEK64_PROTOTYPE \
-	-DHAVE_EXT2_IOCTLS \
-	-DHAVE_LINUX_FD_H \
-	-DHAVE_TYPE_SSIZE_T \
-	-DHAVE_GETOPT_H
+e2label_cflags := -Os -g -W -Wall \
+  -DHAVE_UNISTD_H \
+  -DHAVE_ERRNO_H \
+  -DHAVE_NETINET_IN_H \
+  -DHAVE_SYS_IOCTL_H \
+  -DHAVE_SYS_MMAN_H \
+  -DHAVE_SYS_MOUNT_H \
+  -DHAVE_SYS_PRCTL_H \
+  -DHAVE_SYS_RESOURCE_H \
+  -DHAVE_SYS_SELECT_H \
+  -DHAVE_SYS_STAT_H \
+  -DHAVE_SYS_TYPES_H \
+  -DHAVE_STDLIB_H \
+  -DHAVE_STRCASECMP \
+  -DHAVE_STRDUP \
+  -DHAVE_MMAP \
+  -DHAVE_UTIME_H \
+  -DHAVE_GETPAGESIZE \
+  -DHAVE_LSEEK64 \
+  -DHAVE_LSEEK64_PROTOTYPE \
+  -DHAVE_EXT2_IOCTLS \
+  -DHAVE_LINUX_FD_H \
+  -DHAVE_TYPE_SSIZE_T \
+  -DHAVE_GETOPT_H
 
+e2label_shared_libraries := \
+  libext2fs \
+  libext2_com_err \
+  libc
+
+e2label_system_shared_libraries := libc
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(e2label_src_files)
+LOCAL_C_INCLUDES := $(e2label_c_includes)
+LOCAL_CFLAGS := $(e2label_cflags)
+LOCAL_SHARED_LIBRARIES := $(e2label_shared_libraries)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(e2label_system_shared_libraries)
 LOCAL_MODULE := e2label
 LOCAL_MODULE_TAGS := eng
 
-LOCAL_SYSTEM_SHARED_LIBRARIES := \
-	libext2fs \
-	libext2_com_err \
-	libc
-
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(e2label_src_files)
+LOCAL_C_INCLUDES := $(e2label_c_includes)
+LOCAL_CFLAGS := $(e2label_cflags)
+LOCAL_SHARED_LIBRARIES := $(e2label_shared_libraries)
+LOCAL_MODULE := e2label_host
+LOCAL_MODULE_STEM := e2label
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_HOST_EXECUTABLE)

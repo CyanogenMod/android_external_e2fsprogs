@@ -536,7 +536,7 @@ static int do_one_pass(journal_t *journal,
 					memcpy(nbh->b_data, obh->b_data,
 							journal->j_blocksize);
 					if (flags & JFS_FLAG_ESCAPE) {
-						*((__be32 *)nbh->b_data) =
+						*((unsigned int *)nbh->b_data) =
 						cpu_to_be32(JFS_MAGIC_NUMBER);
 					}
 
@@ -729,7 +729,7 @@ static int scan_revoke_records(journal_t *journal, struct buffer_head *bh,
 		unsigned long blocknr;
 		int err;
 
-		blocknr = be32_to_cpu(* ((__be32 *) (bh->b_data+offset)));
+		blocknr = be32_to_cpu(* ((unsigned int *) (bh->b_data+offset)));
 		offset += 4;
 		err = journal_set_revoke(journal, blocknr, sequence);
 		if (err)

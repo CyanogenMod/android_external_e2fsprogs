@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1995, 1996 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -379,6 +379,7 @@ errcode_t ext2fs_block_iterate2(ext2_filsys fs,
 				ctx.errcode = 0;
 				if (!(flags & BLOCK_FLAG_APPEND))
 					break;
+			next_block_set:
 				blk = 0;
 				r = (*ctx.func)(fs, &blk, blockcnt,
 						0, 0, priv_data);
@@ -392,7 +393,8 @@ errcode_t ext2fs_block_iterate2(ext2_filsys fs,
 						       (blk64_t) blk, 0);
 					if (ctx.errcode || (ret & BLOCK_ABORT))
 						break;
-					continue;
+					if (blk)
+						goto next_block_set;
 				}
 				break;
 			}

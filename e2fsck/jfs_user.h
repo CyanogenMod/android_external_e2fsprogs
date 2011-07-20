@@ -61,6 +61,7 @@ typedef struct {
 
 #define cond_resched()	do { } while (0)
 
+
 #define __init
 
 /*

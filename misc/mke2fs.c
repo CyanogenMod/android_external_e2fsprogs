@@ -865,7 +865,7 @@ static void syntax_err_report(const char *filename, long err, int line_num)
 }
 
 #ifndef ROOT_SYSCONFDIR
-#define ROOT_SYSCONFDIR "/etc"
+#define ROOT_SYSCONFDIR "/etc/"
 #endif
 static const char *config_fn[] = { ROOT_SYSCONFDIR "/mke2fs.conf", 0 };
 
@@ -1133,7 +1133,7 @@ static void PRS(int argc, char *argv[])
 	int		inode_size = 0;
 	unsigned long	flex_bg_size = 0;
 	double		reserved_ratio = 5.0;
-	int		sector_size = 0;
+	int		lsector_size = 0, psector_size = 0;
 	int		show_version_only = 0;
 	unsigned long long num_inodes = 0; /* unsigned long long to catch too-large input */
 	errcode_t	retval;
@@ -1273,7 +1273,7 @@ static void PRS(int argc, char *argv[])
 					_("Illegal number for flex_bg size"));
 				exit(1);
 			}
-			if (flex_bg_size < 2 ||
+			if (flex_bg_size < 1 ||
 			    (flex_bg_size & (flex_bg_size-1)) != 0) {
 				com_err(program_name, 0,
 					_("flex_bg size must be a power of 2"));
@@ -1648,16 +1648,25 @@ got_size:
 	    ((tmp = getenv("MKE2FS_FIRST_META_BG"))))
 		fs_param.s_first_meta_bg = atoi(tmp);
 
-	/* Get the hardware sector size, if available */
-	retval = ext2fs_get_device_sectsize(device_name, &sector_size);
+	/* Get the hardware sector sizes, if available */
+	retval = ext2fs_get_device_sectsize(device_name, &lsector_size);
 	if (retval) {
 		com_err(program_name, retval,
 			_("while trying to determine hardware sector size"));
 		exit(1);
 	}
+	retval = ext2fs_get_device_phys_sectsize(device_name, &psector_size);
+	if (retval) {
+		com_err(program_name, retval,
+			_("while trying to determine physical sector size"));
+		exit(1);
+	}
+	/* Older kernels may not have physical/logical distinction */
+	if (!psector_size)
+		psector_size = lsector_size;
 
 	if ((tmp = getenv("MKE2FS_DEVICE_SECTSIZE")) != NULL)
-		sector_size = atoi(tmp);
+		psector_size = atoi(tmp);
 
 	if (blocksize <= 0) {
 		use_bsize = get_int_from_profile(fs_types, "blocksize", 4096);
@@ -1668,12 +1677,25 @@ got_size:
 			    (use_bsize > 4096))
 				use_bsize = 4096;
 		}
-		if (sector_size && use_bsize < sector_size)
-			use_bsize = sector_size;
+		if (psector_size && use_bsize < psector_size)
+			use_bsize = psector_size;
 		if ((blocksize < 0) && (use_bsize < (-blocksize)))
 			use_bsize = -blocksize;
 		blocksize = use_bsize;
 		fs_param.s_blocks_count /= blocksize / 1024;
+	} else {
+		if (blocksize < lsector_size ||			/* Impossible */
+		    (!force && (blocksize < psector_size))) {	/* Suboptimal */
+			com_err(program_name, EINVAL,
+				_("while setting blocksize; too small "
+				  "for device\n"));
+			exit(1);
+		} else if (blocksize < psector_size) {
+			fprintf(stderr, _("Warning: specified blocksize %d is "
+				"less than device physical sectorsize %d, "
+				"forced to continue\n"), blocksize,
+				psector_size);
+		}
 	}
 
 	if (inode_ratio == 0) {
@@ -1697,7 +1719,6 @@ got_size:
 		       device_name, retval);
 		printf(_("This may result in very poor performance, "
 			  "(re)-partitioning suggested.\n"));
-		proceed_question();
 	}
 #endif
 
@@ -1939,11 +1960,10 @@ static void mke2fs_discard_blocks(ext2_filsys fs)
 	range[1] = blocks * blocksize;
 
 #ifdef HAVE_OPEN64
-    fd = open64(fs->device_name, O_RDWR);
+	fd = open64(fs->device_name, O_RDWR);
 #else
-    fd = open(fs->device_name, O_RDWR);
+	fd = open(fs->device_name, O_RDWR);
 #endif
-
 	/*
 	 * We don't care about whether the ioctl succeeds; it's only an
 	 * optmization for SSDs or sparse storage.
@@ -1952,7 +1972,8 @@ static void mke2fs_discard_blocks(ext2_filsys fs)
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (verbose) {
 			printf(_("Calling BLKDISCARD from %llu to %llu "),
-				range[0], range[1]);
+			       (unsigned long long) range[0],
+			       (unsigned long long) range[1]);
 			if (ret)
 				printf(_("failed.\n"));
 			else

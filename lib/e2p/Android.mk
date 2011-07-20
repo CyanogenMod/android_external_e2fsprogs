@@ -1,7 +1,6 @@
 LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := \
+libext2_e2p_src_files := \
 	feature.c \
 	fgetflags.c \
 	fsetflags.c \
@@ -23,14 +22,9 @@ LOCAL_SRC_FILES := \
 	ostype.c \
 	percent.c
 
+libext2_e2p_c_includes := external/e2fsprogs/lib
 
-LOCAL_MODULE := libext2_e2p
-LOCAL_MODULE_TAGS := eng
-LOCAL_SYSTEM_SHARED_LIBRARIES := libc
-
-LOCAL_C_INCLUDES := external/e2fsprogs/lib
-
-LOCAL_CFLAGS := -Os -g -W -Wall \
+libext2_e2p_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -51,8 +45,32 @@ LOCAL_CFLAGS := -Os -g -W -Wall \
 	-DHAVE_LSEEK64_PROTOTYPE \
 	-DHAVE_EXT2_IOCTLS \
 	-DHAVE_LINUX_FD_H \
-	-DHAVE_TYPE_SSIZE_T
+	-DHAVE_TYPE_SSIZE_T \
+	-DHAVE_SYS_TIME_H \
+	-DHAVE_SYSCONF
 
+libext2_e2p_system_shared_libraries := libc
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_e2p_src_files)
+LOCAL_C_INCLUDES := $(libext2_e2p_c_includes)
+LOCAL_CFLAGS := $(libext2_e2p_cflags)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_e2p_system_shared_libraries)
 LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_e2p
+LOCAL_MODULE_TAGS := eng
 
 include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_e2p_src_files)
+LOCAL_C_INCLUDES := $(libext2_e2p_c_includes)
+LOCAL_CFLAGS := $(libext2_e2p_cflags)
+LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_e2p_host
+LOCAL_MODULE_STEM := libext2_e2p
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_HOST_SHARED_LIBRARY)
