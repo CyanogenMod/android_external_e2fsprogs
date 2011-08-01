@@ -268,8 +268,7 @@ e2label_cflags := -Os -g -W -Wall \
 
 e2label_shared_libraries := \
   libext2fs \
-  libext2_com_err \
-  libc
+  libext2_com_err
 
 e2label_system_shared_libraries := libc
 
