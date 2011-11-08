@@ -60,8 +60,6 @@ else
 LOCAL_CFLAGS := $(libext2_com_err_cflags)
 endif
 LOCAL_MODULE := libext2_com_err_host
-LOCAL_MODULE_STEM := libext2_com_err
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_HOST_SHARED_LIBRARY)

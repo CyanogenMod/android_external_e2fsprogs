@@ -61,8 +61,6 @@ LOCAL_SRC_FILES := $(libext2_uuid_src_files)
 LOCAL_C_INCLUDES := $(libext2_uuid_c_includes)
 LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_MODULE := libext2_uuid_host
-LOCAL_MODULE_STEM := libext2_uuid
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_HOST_SHARED_LIBRARY)

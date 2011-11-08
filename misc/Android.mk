@@ -72,7 +72,7 @@ LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
 else
 LOCAL_CFLAGS := $(mke2fs_cflags)
 endif
-LOCAL_SHARED_LIBRARIES := $(mke2fs_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(addsuffix _host, $(mke2fs_shared_libraries))
 LOCAL_MODULE := mke2fs_host
 LOCAL_MODULE_STEM := mke2fs
 LOCAL_MODULE_TAGS := optional
@@ -145,7 +145,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(tune2fs_src_files)
 LOCAL_C_INCLUDES := $(tune2fs_c_includes)
 LOCAL_CFLAGS := $(tune2fs_cflags)
-LOCAL_SHARED_LIBRARIES := $(tune2fs_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(addsuffix _host, $(tune2fs_shared_libraries))
 LOCAL_MODULE := tune2fs_host
 LOCAL_MODULE_STEM := tune2fs
 LOCAL_MODULE_TAGS := optional
@@ -216,7 +216,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(badblocks_src_files)
 LOCAL_C_INCLUDES := $(badblocks_c_includes)
 LOCAL_CFLAGS := $(badblocks_cflags)
-LOCAL_SHARED_LIBRARIES := $(badblocks_shared_libraries)
+LOCAL_SHARED_LIBRARIES := $(addsuffix _host, $(badblocks_shared_libraries))
 LOCAL_MODULE := badblocks_host
 LOCAL_MODULE_STEM := badblocks
 LOCAL_MODULE_TAGS := optional
