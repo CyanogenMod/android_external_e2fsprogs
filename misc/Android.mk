@@ -67,6 +67,22 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(mke2fs_src_files)
 LOCAL_C_INCLUDES := $(mke2fs_c_includes)
+LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
+LOCAL_STATIC_LIBRARIES := $(mke2fs_shared_libraries)
+LOCAL_STATIC_LIBRARIES += $(mke2fs_system_shared_libraries)
+LOCAL_MODULE := utility_mke2fs
+LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_CLASS := UTILITY_EXECUTABLES
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/utilities
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
+LOCAL_MODULE_STEM := mke2fs
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(mke2fs_src_files)
+LOCAL_C_INCLUDES := $(mke2fs_c_includes)
 ifeq ($(HOST_OS),linux)
 LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
 else
@@ -137,6 +153,23 @@ LOCAL_SHARED_LIBRARIES := $(tune2fs_shared_libraries)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(tune2fs_system_shared_libraries)
 LOCAL_MODULE := tune2fs
 LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(tune2fs_src_files)
+LOCAL_C_INCLUDES := $(tune2fs_c_includes)
+LOCAL_CFLAGS := $(tune2fs_cflags)
+LOCAL_STATIC_LIBRARIES := $(tune2fs_shared_libraries)
+LOCAL_STATIC_LIBRARIES += $(tune2fs_system_shared_libraries)
+LOCAL_MODULE := utility_tune2fs
+LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_CLASS := UTILITY_EXECUTABLES
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/utilities
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
+LOCAL_MODULE_STEM := tune2fs
+LOCAL_FORCE_STATIC_EXECUTABLE := true
 
 include $(BUILD_EXECUTABLE)
 
