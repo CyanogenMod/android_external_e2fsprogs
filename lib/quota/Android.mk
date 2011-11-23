@@ -54,6 +54,18 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext2_quota_src_files)
 LOCAL_C_INCLUDES := $(libext2_quota_c_includes)
 LOCAL_CFLAGS := $(libext2_quota_cflags)
+LOCAL_SYSTEM_STATIC_LIBRARIES := libc $(libext2_quota_shared_libraries) libext2fs
+LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_quota
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_quota_src_files)
+LOCAL_C_INCLUDES := $(libext2_quota_c_includes)
+LOCAL_CFLAGS := $(libext2_quota_cflags)
 LOCAL_MODULE := libext2_quota_host
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := $(addsuffix _host, $(libext2_quota_shared_libraries))

@@ -126,6 +126,18 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(libext2fs_src_files)
+LOCAL_STATIC_LIBRARIES := $(libext2fs_system_shared_libraries) $(libext2fs_shared_libraries)
+LOCAL_C_INCLUDES := $(libext2fs_c_includes)
+LOCAL_CFLAGS := $(libext2fs_cflags) $(libext2fs_cflags_linux)
+LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2fs
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2fs_src_files)
 LOCAL_SHARED_LIBRARIES := $(addsuffix _host, $(libext2fs_shared_libraries))
 LOCAL_C_INCLUDES := $(libext2fs_c_includes)
 ifeq ($(HOST_OS),linux)
