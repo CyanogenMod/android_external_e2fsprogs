@@ -61,6 +61,19 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(resize2fs_src_files)
 LOCAL_C_INCLUDES := $(resize2fs_c_includes)
 LOCAL_CFLAGS := $(resize2fs_cflags)
+LOCAL_STATIC_LIBRARIES := $(resize2fs_shared_libraries)
+LOCAL_STATIC_LIBRARIES += $(resize2fs_system_shared_libraries)
+LOCAL_MODULE := resize2fs_static
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/install/bin
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(resize2fs_src_files)
+LOCAL_C_INCLUDES := $(resize2fs_c_includes)
+LOCAL_CFLAGS := $(resize2fs_cflags)
 LOCAL_SHARED_LIBRARIES := $(addsuffix -host, $(resize2fs_shared_libraries))
 LOCAL_MODULE := resize2fs_host
 LOCAL_MODULE_STEM := resize2fs

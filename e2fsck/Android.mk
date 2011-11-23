@@ -56,6 +56,18 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(libext2_profile_src_files)
+LOCAL_STATIC_LIBRARIES := $(libext2_profile_system_shared_libraries) $(libext2_profile_shared_libraries)
+LOCAL_C_INCLUDES := $(libext2_profile_c_includes)
+LOCAL_CFLAGS := $(libext2_profile_cflags)
+LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libext2_profile
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_profile_src_files)
 LOCAL_SHARED_LIBRARIES := $(addsuffix -host, $(libext2_profile_shared_libraries))
 LOCAL_C_INCLUDES := $(libext2_profile_c_includes)
 LOCAL_CFLAGS := $(libext2_profile_cflags)
@@ -148,6 +160,36 @@ LOCAL_CFLAGS := $(e2fsck_cflags)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(e2fsck_system_shared_libraries)
 LOCAL_SHARED_LIBRARIES := $(e2fsck_shared_libraries)
 LOCAL_MODULE := e2fsck
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(e2fsck_src_files)
+LOCAL_C_INCLUDES := $(e2fsck_c_includes)
+LOCAL_CFLAGS := $(e2fsck_cflags)
+LOCAL_STATIC_LIBRARIES := $(e2fsck_system_shared_libraries) $(e2fsck_shared_libraries) libext2fs
+LOCAL_MODULE := recovery_e2fsck
+LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/recovery
+LOCAL_MODULE_STEM := e2fsck
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(e2fsck_src_files)
+LOCAL_C_INCLUDES := $(e2fsck_c_includes)
+LOCAL_CFLAGS := $(e2fsck_cflags)
+LOCAL_STATIC_LIBRARIES := $(e2fsck_system_shared_libraries) $(e2fsck_shared_libraries) libext2fs
+LOCAL_MODULE := utility_e2fsck
+LOCAL_MODULE_CLASS := UTILITY_EXECUTABLES
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/utilities
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
+LOCAL_MODULE_STEM := e2fsck
+LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
 

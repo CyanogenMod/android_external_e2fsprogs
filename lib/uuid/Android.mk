@@ -62,6 +62,18 @@ LOCAL_SRC_FILES := $(libext2_uuid_src_files)
 LOCAL_C_INCLUDES := $(libext2_uuid_c_includes)
 LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
+LOCAL_STATIC_LIBRARIES := $(libext2_uuid_system_shared_libraries)
+LOCAL_MODULE := libext2_uuid
+LOCAL_MODULE_TAGS := eng
+LOCAL_PRELINK_MODULE := false
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext2_uuid_src_files)
+LOCAL_C_INCLUDES := $(libext2_uuid_c_includes)
+LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_MODULE := libext2_uuid-host
 LOCAL_MODULE_TAGS := optional
 
