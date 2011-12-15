@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1995, 1996 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -88,6 +88,7 @@ struct struct_io_manager {
 
 #define IO_FLAG_RW		0x0001
 #define IO_FLAG_EXCLUSIVE	0x0002
+#define IO_FLAG_DIRECT_IO	0x0004
 
 /*
  * Convenience functions....

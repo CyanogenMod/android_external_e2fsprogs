@@ -28,6 +28,7 @@ libext2_com_err_cflags := -O2 -g -W -Wall \
 	-DHAVE_EXT2_IOCTLS \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 libext2_com_err_cflags_linux := \

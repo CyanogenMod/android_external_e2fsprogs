@@ -84,7 +84,7 @@ int	cflag;
 int	verbose;
 int	quiet;
 int	super_only;
-int	discard = 1;
+int	discard = 1;	/* attempt to discard device before fs creation */
 int	force;
 int	noaction;
 int	journal_size;
@@ -198,7 +198,6 @@ static void read_bb_file(ext2_filsys fs, badblocks_list *bb_list,
 	}
 }
 
-#ifndef NO_CHECK_BB
 /*
  * Runs the badblocks program to test the disk
  */
@@ -227,7 +226,6 @@ static void test_disk(ext2_filsys fs, badblocks_list *bb_list)
 		exit(1);
 	}
 }
-#endif
 
 static void handle_bad_blocks(ext2_filsys fs, badblocks_list bb_list)
 {
@@ -356,7 +354,7 @@ static void progress_close(struct progress_struct *progress)
 	fputs(_("done                            \n"), stdout);
 }
 
-static void write_inode_tables(ext2_filsys fs, int lazy_flag)
+static void write_inode_tables(ext2_filsys fs, int lazy_flag, int itable_zeroed)
 {
 	errcode_t	retval;
 	blk_t		blk;
@@ -383,7 +381,8 @@ static void write_inode_tables(ext2_filsys fs, int lazy_flag)
 				 EXT2_INODE_SIZE(fs->super)) +
 				EXT2_BLOCK_SIZE(fs->super) - 1) /
 			       EXT2_BLOCK_SIZE(fs->super));
-		} else {
+		}
+		if (!lazy_flag || itable_zeroed) {
 			/* The kernel doesn't need to zero the itable blocks */
 			fs->group_desc[i].bg_flags |= EXT2_BG_INODE_ZEROED;
 			ext2fs_group_desc_csum_set(fs, i);
@@ -811,6 +810,10 @@ static void parse_extended_opts(struct ext2_super_block *param,
 				lazy_itable_init = strtoul(arg, &p, 0);
 			else
 				lazy_itable_init = 1;
+		} else if (!strcmp(token, "discard")) {
+			discard = 1;
+		} else if (!strcmp(token, "nodiscard")) {
+			discard = 0;
 		} else {
 			r_usage++;
 			badopt = token;
@@ -826,7 +829,9 @@ static void parse_extended_opts(struct ext2_super_block *param,
 			"\tstripe-width=<RAID stride * data disks in blocks>\n"
 			"\tresize=<resize maximum size in blocks>\n"
 			"\tlazy_itable_init=<0 to disable, 1 to enable>\n"
-			"\ttest_fs\n\n"),
+			"\ttest_fs\n"
+			"\tdiscard\n"
+			"\tnodiscard\n\n"),
 			badopt ? badopt : "");
 		free(buf);
 		exit(1);
@@ -933,6 +938,35 @@ static void print_str_list(char **list)
 	fputc('\n', stdout);
 }
 
+/*
+ * Return TRUE if the profile has the given subsection
+ */
+static int profile_has_subsection(profile_t profile, const char *section,
+				  const char *subsection)
+{
+	void			*state;
+	const char		*names[4];
+	char			*name;
+	int			ret = 0;
+
+	names[0] = section;
+	names[1] = subsection;
+	names[2] = 0;
+
+	if (profile_iterator_create(profile, names,
+				    PROFILE_ITER_LIST_SECTION |
+				    PROFILE_ITER_RELATIONS_ONLY, &state))
+		return 0;
+
+	if ((profile_iterator(&state, &name, 0) == 0) && name) {
+		free(name);
+		ret = 1;
+	}
+
+	profile_iterator_free(&state);
+	return ret;
+}
+
 static char **parse_fs_type(const char *fs_type,
 			    const char *usage_types,
 			    struct ext2_super_block *fs_param,
@@ -983,17 +1017,19 @@ static char **parse_fs_type(const char *fs_type,
 			ext_type = "ext3";
 	}
 
-	if (!strcmp(ext_type, "ext3") || !strcmp(ext_type, "ext4") ||
-	    !strcmp(ext_type, "ext4dev")) {
-		profile_get_string(profile, "fs_types", ext_type, "features",
-				   0, &t);
-		if (!t) {
-			printf(_("\nWarning!  Your mke2fs.conf file does "
-				 "not define the %s filesystem type.\n"),
-			       ext_type);
+
+	if (!profile_has_subsection(profile, "fs_types", ext_type) &&
+	    strcmp(ext_type, "ext2")) {
+		printf(_("\nYour mke2fs.conf file does not define the "
+			 "%s filesystem type.\n"), ext_type);
+		if (!strcmp(ext_type, "ext3") || !strcmp(ext_type, "ext4") ||
+		    !strcmp(ext_type, "ext4dev")) {
 			printf(_("You probably need to install an updated "
 				 "mke2fs.conf file.\n\n"));
-			sleep(5);
+		}
+		if (!force) {
+			printf(_("Aborting...\n"));
+			exit(1);
 		}
 	}
 
@@ -1026,8 +1062,15 @@ static char **parse_fs_type(const char *fs_type,
 		if (t)
 			*t = '\0';
 
-		if (*cp)
-			push_string(&list, cp);
+		if (*cp) {
+			if (profile_has_subsection(profile, "fs_types", cp))
+				push_string(&list, cp);
+			else if (strcmp(cp, "default") != 0)
+				fprintf(stderr,
+					_("\nWarning: the fs_type %s is not "
+					  "defined in mke2fs.conf\n\n"),
+					cp);
+		}
 		if (t)
 			cp = t+1;
 		else {
@@ -1089,8 +1132,9 @@ static const char *default_files[] = { "<default>", 0 };
  * Sets the geometry of a device (stripe/stride), and returns the
  * device's alignment offset, if any, or a negative error.
  */
-static int ext2fs_get_device_geometry(const char *file,
-				      struct ext2_super_block *fs_param)
+static int get_device_geometry(const char *file,
+			       struct ext2_super_block *fs_param,
+			       int psector_size)
 {
 	int rc = -1;
 	int blocksize;
@@ -1115,6 +1159,12 @@ static int ext2fs_get_device_geometry(const char *file,
 	min_io = blkid_topology_get_minimum_io_size(tp);
 	opt_io = blkid_topology_get_optimal_io_size(tp);
 	blocksize = EXT2_BLOCK_SIZE(fs_param);
+	if ((min_io == 0) && (psector_size > blocksize))
+		min_io = psector_size;
+	if ((opt_io == 0) && min_io)
+		opt_io = min_io;
+	if ((opt_io == 0) && (psector_size > blocksize))
+		opt_io = psector_size;
 
 	fs_param->s_raid_stride = min_io / blocksize;
 	fs_param->s_raid_stripe_width = opt_io / blocksize;
@@ -1136,7 +1186,7 @@ static void PRS(int argc, char *argv[])
 	int		inode_size = 0;
 	unsigned long	flex_bg_size = 0;
 	double		reserved_ratio = 5.0;
-	int		sector_size = 0;
+	int		lsector_size = 0, psector_size = 0;
 	int		show_version_only = 0;
 	unsigned long long num_inodes = 0; /* unsigned long long to catch too-large input */
 	errcode_t	retval;
@@ -1240,12 +1290,7 @@ static void PRS(int argc, char *argv[])
 						 EXT2_MIN_BLOCK_LOG_SIZE);
 			break;
 		case 'c':	/* Check for bad blocks */
-#ifndef NO_CHECK_BB
 			cflag++;
-#else
-			com_err(program_name, 0, _("check for bad blocks disabled"));
-			exit(1);
-#endif
 			break;
 		case 'f':
 			size = strtoul(optarg, &tmp, 0);
@@ -1281,7 +1326,7 @@ static void PRS(int argc, char *argv[])
 					_("Illegal number for flex_bg size"));
 				exit(1);
 			}
-			if (flex_bg_size < 2 ||
+			if (flex_bg_size < 1 ||
 			    (flex_bg_size & (flex_bg_size-1)) != 0) {
 				com_err(program_name, 0,
 					_("flex_bg size must be a power of 2"));
@@ -1296,7 +1341,7 @@ static void PRS(int argc, char *argv[])
 				com_err(program_name, 0,
 					_("invalid inode ratio %s (min %d/max %d)"),
 					optarg, EXT2_MIN_BLOCK_SIZE,
-					EXT2_MAX_BLOCK_SIZE);
+					EXT2_MAX_BLOCK_SIZE * 1024);
 				exit(1);
 			}
 			break;
@@ -1304,6 +1349,10 @@ static void PRS(int argc, char *argv[])
 			parse_journal_opts(optarg);
 			break;
 		case 'K':
+			fprintf(stderr, _("Warning: -K option is deprecated and "
+					  "should not be used anymore. Use "
+					  "\'-E nodiscard\' extended option "
+					  "instead!\n"));
 			discard = 0;
 			break;
 		case 'j':
@@ -1472,8 +1521,9 @@ static void PRS(int argc, char *argv[])
 		fs_param.s_blocks_count = parse_num_blocks(argv[optind++],
 				fs_param.s_log_block_size);
 		if (!fs_param.s_blocks_count) {
-			com_err(program_name, 0, _("invalid blocks count - %s"),
-				argv[optind - 1]);
+			com_err(program_name, 0,
+				_("invalid blocks count '%s' on device '%s'"),
+				argv[optind - 1], device_name);
 			exit(1);
 		}
 	}
@@ -1656,16 +1706,28 @@ got_size:
 	    ((tmp = getenv("MKE2FS_FIRST_META_BG"))))
 		fs_param.s_first_meta_bg = atoi(tmp);
 
-	/* Get the hardware sector size, if available */
-	retval = ext2fs_get_device_sectsize(device_name, &sector_size);
+	/* Get the hardware sector sizes, if available */
+	retval = ext2fs_get_device_sectsize(device_name, &lsector_size);
 	if (retval) {
 		com_err(program_name, retval,
 			_("while trying to determine hardware sector size"));
 		exit(1);
 	}
+	retval = ext2fs_get_device_phys_sectsize(device_name, &psector_size);
+	if (retval) {
+		com_err(program_name, retval,
+			_("while trying to determine physical sector size"));
+		exit(1);
+	}
 
 	if ((tmp = getenv("MKE2FS_DEVICE_SECTSIZE")) != NULL)
-		sector_size = atoi(tmp);
+		lsector_size = atoi(tmp);
+	if ((tmp = getenv("MKE2FS_DEVICE_PHYS_SECTSIZE")) != NULL)
+		psector_size = atoi(tmp);
+
+	/* Older kernels may not have physical/logical distinction */
+	if (!psector_size)
+		psector_size = lsector_size;
 
 	if (blocksize <= 0) {
 		use_bsize = get_int_from_profile(fs_types, "blocksize", 4096);
@@ -1676,12 +1738,24 @@ got_size:
 			    (use_bsize > 4096))
 				use_bsize = 4096;
 		}
-		if (sector_size && use_bsize < sector_size)
-			use_bsize = sector_size;
+		if (lsector_size && use_bsize < lsector_size)
+			use_bsize = lsector_size;
 		if ((blocksize < 0) && (use_bsize < (-blocksize)))
 			use_bsize = -blocksize;
 		blocksize = use_bsize;
 		fs_param.s_blocks_count /= blocksize / 1024;
+	} else {
+		if (blocksize < lsector_size) {			/* Impossible */
+			com_err(program_name, EINVAL,
+				_("while setting blocksize; too small "
+				  "for device\n"));
+			exit(1);
+		} else if ((blocksize < psector_size) &&
+			   (psector_size <= sys_page_size)) {	/* Suboptimal */
+			fprintf(stderr, _("Warning: specified blocksize %d is "
+				"less than device physical sectorsize %d\n"),
+				blocksize, psector_size);
+		}
 	}
 
 	if (inode_ratio == 0) {
@@ -1695,7 +1769,7 @@ got_size:
 		int_log2(blocksize >> EXT2_MIN_BLOCK_LOG_SIZE);
 
 #ifdef HAVE_BLKID_PROBE_GET_TOPOLOGY
-	retval = ext2fs_get_device_geometry(device_name, &fs_param);
+	retval = get_device_geometry(device_name, &fs_param, psector_size);
 	if (retval < 0) {
 		fprintf(stderr,
 			_("warning: Unable to get device geometry for %s\n"),
@@ -1710,8 +1784,14 @@ got_size:
 
 	blocksize = EXT2_BLOCK_SIZE(&fs_param);
 
+	lazy_itable_init = 0;
+	if (access("/sys/fs/ext4/features/lazy_itable_init", R_OK) == 0)
+		lazy_itable_init = 1;
+
 	lazy_itable_init = get_bool_from_profile(fs_types,
-						 "lazy_itable_init", 0);
+						 "lazy_itable_init",
+						 lazy_itable_init);
+	discard = get_bool_from_profile(fs_types, "discard" , discard);
 
 	/* Get options from profile */
 	for (cpp = fs_types; *cpp; cpp++) {
@@ -1932,7 +2012,14 @@ static int mke2fs_setup_tdb(const char *name, io_manager *io_ptr)
 #define BLKDISCARD	_IO(0x12,119)
 #endif
 
-static void mke2fs_discard_blocks(ext2_filsys fs)
+#ifndef BLKDISCARDZEROES
+#define BLKDISCARDZEROES _IO(0x12,124)
+#endif
+
+/*
+ * Return zero if the discard succeeds, and -1 if the discard fails.
+ */
+static int mke2fs_discard_blocks(ext2_filsys fs)
 {
 	int fd;
 	int ret;
@@ -1945,21 +2032,17 @@ static void mke2fs_discard_blocks(ext2_filsys fs)
 	range[0] = 0;
 	range[1] = blocks * blocksize;
 
-#ifdef HAVE_OPEN64		
+#ifdef HAVE_OPEN64
 	fd = open64(fs->device_name, O_RDWR);
 #else
 	fd = open(fs->device_name, O_RDWR);
 #endif
-
-	/*
-	 * We don't care about whether the ioctl succeeds; it's only an
-	 * optmization for SSDs or sparse storage.
-	 */
 	if (fd > 0) {
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (verbose) {
 			printf(_("Calling BLKDISCARD from %llu to %llu "),
-				range[0], range[1]);
+			       (unsigned long long) range[0],
+			       (unsigned long long) range[1]);
 			if (ret)
 				printf(_("failed.\n"));
 			else
@@ -1967,9 +2050,29 @@ static void mke2fs_discard_blocks(ext2_filsys fs)
 		}
 		close(fd);
 	}
+	return ret;
+}
+
+static int mke2fs_discard_zeroes_data(ext2_filsys fs)
+{
+	int fd;
+	int ret;
+	int discard_zeroes_data = 0;
+
+#ifdef HAVE_OPEN64
+	fd = open64(fs->device_name, O_RDWR);
+#else
+	fd = open(fs->device_name, O_RDWR);
+#endif
+	if (fd > 0) {
+		ioctl(fd, BLKDISCARDZEROES, &discard_zeroes_data);
+		close(fd);
+	}
+	return discard_zeroes_data;
 }
 #else
-#define mke2fs_discard_blocks(fs)
+#define mke2fs_discard_blocks(fs)	1
+#define mke2fs_discard_zeroes_data(fs)	0
 #endif
 
 int main (int argc, char *argv[])
@@ -1983,6 +2086,7 @@ int main (int argc, char *argv[])
 	io_manager	io_ptr;
 	char		tdb_string[40];
 	char		*hash_alg_str;
+	int		itable_zeroed = 0;
 
 #ifdef ENABLE_NLS
 	setlocale(LC_MESSAGES, "");
@@ -2017,8 +2121,17 @@ int main (int argc, char *argv[])
 	}
 
 	/* Can't undo discard ... */
-	if (discard && (io_ptr != undo_io_manager))
-		mke2fs_discard_blocks(fs);
+	if (discard && (io_ptr != undo_io_manager)) {
+		retval = mke2fs_discard_blocks(fs);
+
+		if (!retval && mke2fs_discard_zeroes_data(fs)) {
+			if (verbose)
+				printf(_("Discard succeeded and will return 0s "
+					 " - skipping inode table wipe\n"));
+			lazy_itable_init = 1;
+			itable_zeroed = 1;
+		}
+	}
 
 	sprintf(tdb_string, "tdb_data_size=%d", fs->blocksize <= 4096 ?
 		32768 : fs->blocksize * 8);
@@ -2059,6 +2172,7 @@ int main (int argc, char *argv[])
 	hash_alg_str = get_string_from_profile(fs_types, "hash_alg",
 					       "half_md4");
 	hash_alg = e2p_string2hash(hash_alg_str);
+	free(hash_alg_str);
 	fs->super->s_def_hash_version = (hash_alg >= 0) ? hash_alg :
 		EXT2_HASH_HALF_MD4;
 	uuid_generate((unsigned char *) fs->super->s_hash_seed);
@@ -2122,11 +2236,8 @@ int main (int argc, char *argv[])
 
 	if (bad_blocks_filename)
 		read_bb_file(fs, &bb_list, bad_blocks_filename);
-
-#ifndef NO_CHECK_BB
 	if (cflag)
 		test_disk(fs, &bb_list);
-#endif
 
 	handle_bad_blocks(fs, bb_list);
 	fs->stride = fs_stride = fs->super->s_raid_stride;
@@ -2167,7 +2278,7 @@ int main (int argc, char *argv[])
 				_("while zeroing block %u at end of filesystem"),
 				ret_blk);
 		}
-		write_inode_tables(fs, lazy_itable_init);
+		write_inode_tables(fs, lazy_itable_init, itable_zeroed);
 		create_root_dir(fs);
 		create_lost_and_found(fs);
 		reserve_inodes(fs);
@@ -2265,5 +2376,8 @@ no_journal:
 	remove_error_table(&et_ext2_error_table);
 	remove_error_table(&et_prof_error_table);
 	profile_release(profile);
+	for (i=0; fs_types[i]; i++)
+		free(fs_types[i]);
+	free(fs_types);
 	return (retval || val) ? 1 : 0;
 }

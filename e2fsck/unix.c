@@ -295,8 +295,13 @@ static void check_if_skip(e2fsck_t ctx)
 	long next_check;
 	int batt = is_on_batt();
 	int defer_check_on_battery;
+	int broken_system_clock;
 	time_t lastcheck;
 
+	profile_get_boolean(ctx->profile, "options", "broken_system_clock",
+			    0, 0, &broken_system_clock);
+	if (ctx->flags & E2F_FLAG_TIME_INSANE)
+		broken_system_clock = 1;
 	profile_get_boolean(ctx->profile, "options",
 			    "defer_check_on_battery", 0, 1,
 			    &defer_check_on_battery);
@@ -305,6 +310,9 @@ static void check_if_skip(e2fsck_t ctx)
 
 	if ((ctx->options & E2F_OPT_FORCE) || bad_blocks_file || cflag)
 		return;
+
+	if (ctx->options & E2F_OPT_JOURNAL_ONLY)
+		goto skip;
 
 	lastcheck = fs->super->s_lastcheck;
 	if (lastcheck > ctx->now)
@@ -324,11 +332,12 @@ static void check_if_skip(e2fsck_t ctx)
 		if (batt && (fs->super->s_mnt_count <
 			     (unsigned) fs->super->s_max_mnt_count*2))
 			reason = 0;
-	} else if (fs->super->s_checkinterval && (ctx->now < lastcheck)) {
+	} else if (!broken_system_clock && fs->super->s_checkinterval &&
+		   (ctx->now < lastcheck)) {
 		reason = _(" has filesystem last checked time in the future");
 		if (batt)
 			reason = 0;
-	} else if (fs->super->s_checkinterval &&
+	} else if (!broken_system_clock && fs->super->s_checkinterval &&
 		   ((ctx->now - lastcheck) >=
 		    ((time_t) fs->super->s_checkinterval))) {
 		reason = _(" has gone %u days without being checked");
@@ -354,7 +363,7 @@ static void check_if_skip(e2fsck_t ctx)
 		if (next_check <= 0)
 			next_check = 1;
 	}
-	if (fs->super->s_checkinterval &&
+	if (!broken_system_clock && fs->super->s_checkinterval &&
 	    ((ctx->now - fs->super->s_lastcheck) >= fs->super->s_checkinterval))
 		next_check = 1;
 	if (next_check <= 5) {
@@ -368,6 +377,7 @@ static void check_if_skip(e2fsck_t ctx)
 			printf(_(" (check in %ld mounts)"), next_check);
 	}
 	fputc('\n', stdout);
+skip:
 	ext2fs_close(fs);
 	ctx->fs = NULL;
 	e2fsck_free_context(ctx);
@@ -590,6 +600,12 @@ static void parse_extended_opts(e2fsck_t ctx, const char *opts)
 		} else if (strcmp(token, "fragcheck") == 0) {
 			ctx->options |= E2F_OPT_FRAGCHECK;
 			continue;
+		} else if (strcmp(token, "journal_only") == 0) {
+			if (arg) {
+				extended_usage++;
+				continue;
+			}
+			ctx->options |= E2F_OPT_JOURNAL_ONLY;
 		} else {
 			fprintf(stderr, _("Unknown extended option: %s\n"),
 				token);
@@ -605,6 +621,7 @@ static void parse_extended_opts(e2fsck_t ctx, const char *opts)
 		       "Valid extended options are:\n"), stderr);
 		fputs(("\tea_ver=<ea_version (1 or 2)>\n"), stderr);
 		fputs(("\tfragcheck\n"), stderr);
+		fputs(("\tjournal_only\n"), stderr);
 		fputc('\n', stderr);
 		exit(1);
 	}
@@ -748,7 +765,14 @@ static errcode_t PRS(int argc, char *argv[], e2fsck_t *ret_ctx)
 				goto sscanf_err;
 			break;
 		case 'j':
-			ctx->journal_name = string_copy(ctx, optarg, 0);
+			ctx->journal_name = blkid_get_devname(ctx->blkid,
+							      optarg, NULL);
+			if (!ctx->journal_name) {
+				com_err(ctx->program_name, 0,
+					_("Unable to resolve '%s'"),
+					optarg);
+				fatal_error(ctx, 0);
+			}
 			break;
 		case 'P':
 			res = sscanf(optarg, "%d", &ctx->process_inode_size);
@@ -1052,6 +1076,8 @@ restart:
 			orig_retval = retval;
 			retval = try_open_fs(ctx, flags, io_ptr, &fs);
 			if ((orig_retval == 0) && retval != 0) {
+				if (fs)
+					ext2fs_close(fs);
 				com_err(ctx->program_name, retval,
 					"when using the backup blocks");
 				printf(_("%s: going back to original "
@@ -1098,6 +1124,8 @@ failure:
 		else if (retval == EBUSY)
 			printf(_("Filesystem mounted or opened exclusively "
 				 "by another program?\n"));
+		else if (retval == ENOENT)
+			printf(_("Possibly non-existent device?\n"));
 #ifdef EROFS
 		else if (retval == EROFS)
 			printf(_("Disk write-protected; use the -n option "
@@ -1437,12 +1465,16 @@ no_journal:
 			} else
 				sb->s_state &= ~EXT2_VALID_FS;
 			sb->s_mnt_count = 0;
-			sb->s_lastcheck = ctx->now;
+			if (!(ctx->flags & E2F_FLAG_TIME_INSANE))
+				sb->s_lastcheck = ctx->now;
+			memset(((char *) sb) + EXT4_S_ERR_START, 0,
+			       EXT4_S_ERR_LEN);
 			ext2fs_mark_super_dirty(fs);
 		}
 	}
 
-	if (sb->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM &&
+	if ((run_result & E2F_FLAG_CANCEL) == 0 &&
+	    sb->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM &&
 	    !(ctx->options & E2F_OPT_READONLY)) {
 		retval = ext2fs_set_gdt_csum(ctx->fs);
 		if (retval) {

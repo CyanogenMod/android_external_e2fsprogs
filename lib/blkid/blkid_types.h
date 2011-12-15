@@ -63,7 +63,7 @@ typedef __U32_TYPEDEF __u32;
 #if (4 == 4)
 typedef	unsigned int	__u32;
 #else
-#if (8 == 4)
+#if (4 == 4)
 typedef	unsigned long	__u32;
 #else
 #if (2 == 4)
@@ -81,7 +81,7 @@ typedef __S32_TYPEDEF __s32;
 #if (4 == 4)
 typedef	int		__s32;
 #else
-#if (8 == 4)
+#if (4 == 4)
 typedef	long		__s32;
 #else
 #if (2 == 4)
@@ -99,7 +99,7 @@ typedef __U64_TYPEDEF __u64;
 #if (4 == 8)
 typedef unsigned int	__u64;
 #else
-#if (8 == 8)
+#if (4 == 8)
 typedef unsigned long	__u64;
 #else
 #if (8 == 8)
@@ -115,7 +115,7 @@ typedef __S64_TYPEDEF __s64;
 #if (4 == 8)
 typedef int		__s64;
 #else
-#if (8 == 8)
+#if (4 == 8)
 typedef long		__s64;
 #else
 #if (8 == 8)

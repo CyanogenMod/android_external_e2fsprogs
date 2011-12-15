@@ -32,6 +32,7 @@ resize2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 resize2fs_shared_libraries := \

@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1994, 1995, 1996, 1997 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -29,7 +29,9 @@ errcode_t ext2fs_get_rec_len(ext2_filsys fs,
 {
 	unsigned int len = dirent->rec_len;
 
-	if (len == EXT4_MAX_REC_LEN || len == 0)
+	if (fs->blocksize < 65536)
+		*rec_len = len;
+	else if (len == EXT4_MAX_REC_LEN || len == 0)
 		*rec_len = fs->blocksize;
 	else 
 		*rec_len = (len & 65532) | ((len & 3) << 16);

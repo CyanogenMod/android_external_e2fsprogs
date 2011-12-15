@@ -7,7 +7,7 @@ INSTALL = @INSTALL@
 
 @MCONFIG@
 
-@DEBUGFS_CMT@DEBUGFS_LIB_OBJS = bb_compat.o inode_io.o namei.o write_bb_file.o
+@DEBUGFS_CMT@DEBUGFS_LIB_OBJS = bb_compat.o inode_io.o write_bb_file.o
 
 MK_CMDS=	_SS_DIR_OVERRIDE=../ss ../ss/mk_cmds
 
@@ -61,6 +61,7 @@ OBJS= $(DEBUGFS_LIB_OBJS) $(RESIZE_LIB_OBJS) $(E2IMAGE_LIB_OBJS) \
 	lookup.o \
 	mkdir.o \
 	mkjournal.o \
+	namei.o \
 	native.o \
 	newdir.o \
 	openfs.o \
@@ -238,11 +239,15 @@ tst_getsectsize: tst_getsectsize.o $(STATIC_LIBEXT2FS) $(DEPLIBCOM_ERR)
 	$(Q) $(CC) -o tst_sectgetsize tst_getsectsize.o \
 		$(STATIC_LIBEXT2FS) $(LIBCOM_ERR)
 
+tst_types.o: $(srcdir)/tst_types.c ext2_types.h 
+
 tst_types: tst_types.o ext2_types.h 
 	$(E) "	LD $@"
 	$(Q) $(CC) -o tst_types tst_types.o 
 
-tst_super_size: tst_super_size.o ext2_fs.h
+tst_super_size.o: $(srcdir)/tst_super_size.c $(srcdir)/ext2_fs.h
+
+tst_super_size: tst_super_size.o
 	$(E) "	LD $@"
 	$(Q) $(CC) -o tst_super_size tst_super_size.o 
 
@@ -313,10 +318,11 @@ tst_extents: $(srcdir)/extent.c extent_dbg.c $(DEBUG_OBJS) $(DEPLIBSS) \
 		$(STATIC_LIBEXT2FS) $(LIBBLKID) $(LIBUUID) $(LIBCOM_ERR) \
 		-I $(top_srcdir)/debugfs
 
-tst_csum: csum.c $(STATIC_LIBEXT2FS) $(DEPLIBCOM_ERR)
+tst_csum: csum.c $(STATIC_LIBEXT2FS) $(DEPLIBCOM_ERR) \
+		$(top_srcdir)/lib/e2p/e2p.h
 	$(E) "	LD $@"
 	$(Q) $(CC) -o tst_csum $(srcdir)/csum.c -DDEBUG \
-		$(ALL_CFLAGS) $(STATIC_LIBEXT2FS) $(LIBCOM_ERR)
+		$(ALL_CFLAGS) $(STATIC_LIBEXT2FS) $(LIBCOM_ERR) $(LIBE2P)
 
 mkjournal: mkjournal.c $(STATIC_LIBEXT2FS) $(DEPLIBCOM_ERR)
 	$(E) "	LD $@"

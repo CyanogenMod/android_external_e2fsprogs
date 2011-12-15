@@ -37,6 +37,7 @@ libext2_profile_cflags := -O2 -g -W -Wall \
 	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 include $(CLEAR_VARS)
@@ -88,7 +89,6 @@ e2fsck_src_files :=  \
 	ehandler.c \
 	problem.c \
 	message.c \
-	swapfs.c \
 	ea_refcount.c \
 	rehash.c \
 	region.c
@@ -132,6 +132,7 @@ e2fsck_cflags := -O2 -g -W -Wall \
 	-DHAVE_INTPTR_T \
 	-DENABLE_HTREE=1 \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 include $(CLEAR_VARS)
