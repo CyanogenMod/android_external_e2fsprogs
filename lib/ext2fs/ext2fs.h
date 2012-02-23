@@ -30,6 +30,14 @@ extern "C" {
 #endif
 
 /*
+ * The Apple compiler in Xcode 4.3 fails when inlines are enabled in
+ * so disable them for that compiler.
+ */
+#if __APPLE_CC__ >= 5621
+#define NO_INLINE_FUNCS
+#endif
+
+/*
  * Where the master copy of the superblock is located, and how big
  * superblocks are supposed to be.  We define SUPERBLOCK_SIZE because
  * the size of the superblock structure is not necessarily trustworthy
