@@ -14,7 +14,7 @@ libext2_profile_system_shared_libraries := libc
 
 libext2_profile_c_includes := external/e2fsprogs/lib
 
-libext2_profile_cflags := -O2 -g -W -Wall \
+libext2_profile_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
@@ -119,7 +119,7 @@ e2fsck_system_shared_libraries := libc
 
 e2fsck_c_includes := external/e2fsprogs/lib
 
-e2fsck_cflags := -O2 -g -W -Wall \
+e2fsck_cflags := -Os -g -W -Wall \
 	-DHAVE_DIRENT_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_INTTYPES_H \

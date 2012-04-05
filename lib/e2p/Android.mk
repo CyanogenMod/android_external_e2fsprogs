@@ -24,7 +24,7 @@ libext2_e2p_src_files := \
 
 libext2_e2p_c_includes := external/e2fsprogs/lib
 
-libext2_e2p_cflags := -O2 -g -W -Wall \
+libext2_e2p_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \

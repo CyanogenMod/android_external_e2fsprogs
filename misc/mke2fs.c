@@ -69,10 +69,6 @@ extern int optind;
 #define ZAP_BOOTBLOCK
 #endif
 
-#ifndef ROOT_SYSCONFDIR
-#define ROOT_SYSCONFDIR "/etc"
-#endif
-
 extern int isatty(int);
 extern FILE *fpopen(const char *cmd, const char *mode);
 
@@ -198,7 +194,6 @@ static void read_bb_file(ext2_filsys fs, badblocks_list *bb_list,
 	}
 }
 
-#ifndef NO_CHECK_BB
 /*
  * Runs the badblocks program to test the disk
  */
@@ -227,7 +222,6 @@ static void test_disk(ext2_filsys fs, badblocks_list *bb_list)
 		exit(1);
 	}
 }
-#endif
 
 static void handle_bad_blocks(ext2_filsys fs, badblocks_list bb_list)
 {
@@ -870,6 +864,9 @@ static void syntax_err_report(const char *filename, long err, int line_num)
 	exit(1);
 }
 
+#ifndef ROOT_SYSCONFDIR
+#define ROOT_SYSCONFDIR "/etc/"
+#endif
 static const char *config_fn[] = { ROOT_SYSCONFDIR "/mke2fs.conf", 0 };
 
 static void edit_feature(const char *str, __u32 *compat_array)
@@ -1136,7 +1133,7 @@ static void PRS(int argc, char *argv[])
 	int		inode_size = 0;
 	unsigned long	flex_bg_size = 0;
 	double		reserved_ratio = 5.0;
-	int		sector_size = 0;
+	int		lsector_size = 0, psector_size = 0;
 	int		show_version_only = 0;
 	unsigned long long num_inodes = 0; /* unsigned long long to catch too-large input */
 	errcode_t	retval;
@@ -1240,12 +1237,7 @@ static void PRS(int argc, char *argv[])
 						 EXT2_MIN_BLOCK_LOG_SIZE);
 			break;
 		case 'c':	/* Check for bad blocks */
-#ifndef NO_CHECK_BB
 			cflag++;
-#else
-			com_err(program_name, 0, _("check for bad blocks disabled"));
-			exit(1);
-#endif
 			break;
 		case 'f':
 			size = strtoul(optarg, &tmp, 0);
@@ -1281,7 +1273,7 @@ static void PRS(int argc, char *argv[])
 					_("Illegal number for flex_bg size"));
 				exit(1);
 			}
-			if (flex_bg_size < 2 ||
+			if (flex_bg_size < 1 ||
 			    (flex_bg_size & (flex_bg_size-1)) != 0) {
 				com_err(program_name, 0,
 					_("flex_bg size must be a power of 2"));
@@ -1656,16 +1648,25 @@ got_size:
 	    ((tmp = getenv("MKE2FS_FIRST_META_BG"))))
 		fs_param.s_first_meta_bg = atoi(tmp);
 
-	/* Get the hardware sector size, if available */
-	retval = ext2fs_get_device_sectsize(device_name, &sector_size);
+	/* Get the hardware sector sizes, if available */
+	retval = ext2fs_get_device_sectsize(device_name, &lsector_size);
 	if (retval) {
 		com_err(program_name, retval,
 			_("while trying to determine hardware sector size"));
 		exit(1);
 	}
+	retval = ext2fs_get_device_phys_sectsize(device_name, &psector_size);
+	if (retval) {
+		com_err(program_name, retval,
+			_("while trying to determine physical sector size"));
+		exit(1);
+	}
+	/* Older kernels may not have physical/logical distinction */
+	if (!psector_size)
+		psector_size = lsector_size;
 
 	if ((tmp = getenv("MKE2FS_DEVICE_SECTSIZE")) != NULL)
-		sector_size = atoi(tmp);
+		psector_size = atoi(tmp);
 
 	if (blocksize <= 0) {
 		use_bsize = get_int_from_profile(fs_types, "blocksize", 4096);
@@ -1676,12 +1677,25 @@ got_size:
 			    (use_bsize > 4096))
 				use_bsize = 4096;
 		}
-		if (sector_size && use_bsize < sector_size)
-			use_bsize = sector_size;
+		if (psector_size && use_bsize < psector_size)
+			use_bsize = psector_size;
 		if ((blocksize < 0) && (use_bsize < (-blocksize)))
 			use_bsize = -blocksize;
 		blocksize = use_bsize;
 		fs_param.s_blocks_count /= blocksize / 1024;
+	} else {
+		if (blocksize < lsector_size ||			/* Impossible */
+		    (!force && (blocksize < psector_size))) {	/* Suboptimal */
+			com_err(program_name, EINVAL,
+				_("while setting blocksize; too small "
+				  "for device\n"));
+			exit(1);
+		} else if (blocksize < psector_size) {
+			fprintf(stderr, _("Warning: specified blocksize %d is "
+				"less than device physical sectorsize %d, "
+				"forced to continue\n"), blocksize,
+				psector_size);
+		}
 	}
 
 	if (inode_ratio == 0) {
@@ -1945,12 +1959,11 @@ static void mke2fs_discard_blocks(ext2_filsys fs)
 	range[0] = 0;
 	range[1] = blocks * blocksize;
 
-#ifdef HAVE_OPEN64		
+#ifdef HAVE_OPEN64
 	fd = open64(fs->device_name, O_RDWR);
 #else
 	fd = open(fs->device_name, O_RDWR);
 #endif
-
 	/*
 	 * We don't care about whether the ioctl succeeds; it's only an
 	 * optmization for SSDs or sparse storage.
@@ -1959,7 +1972,8 @@ static void mke2fs_discard_blocks(ext2_filsys fs)
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (verbose) {
 			printf(_("Calling BLKDISCARD from %llu to %llu "),
-				range[0], range[1]);
+			       (unsigned long long) range[0],
+			       (unsigned long long) range[1]);
 			if (ret)
 				printf(_("failed.\n"));
 			else
@@ -2122,11 +2136,8 @@ int main (int argc, char *argv[])
 
 	if (bad_blocks_filename)
 		read_bb_file(fs, &bb_list, bad_blocks_filename);
-
-#ifndef NO_CHECK_BB
 	if (cflag)
 		test_disk(fs, &bb_list);
-#endif
 
 	handle_bad_blocks(fs, bb_list);
 	fs->stride = fs_stride = fs->super->s_raid_stride;

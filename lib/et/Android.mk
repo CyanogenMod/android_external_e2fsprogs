@@ -9,7 +9,7 @@ libext2_com_err_src_files := \
 
 libext2_com_err_c_includes := external/e2fsprogs/lib
 
-libext2_com_err_cflags := -O2 -g -W -Wall \
+libext2_com_err_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \

@@ -15,7 +15,7 @@ libext2_uuid_src_files := \
 
 libext2_uuid_c_includes := external/e2fsprogs/lib
 
-libext2_uuid_cflags := -O2 -g -W -Wall \
+libext2_uuid_cflags := -Os -g -W -Wall \
 	-DHAVE_INTTYPES_H \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \

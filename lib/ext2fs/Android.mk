@@ -25,6 +25,7 @@ libext2fs_src_files := \
 	expanddir.c \
 	ext_attr.c \
 	extent.c \
+	fileio.c \
 	finddev.c \
 	flushb.c \
 	freefs.c \
@@ -45,6 +46,7 @@ libext2fs_src_files := \
 	lookup.c \
 	mkdir.c \
 	mkjournal.c \
+	namei.c \
 	native.c \
 	newdir.c \
 	openfs.c \
@@ -73,7 +75,7 @@ libext2fs_system_shared_libraries := libc
 
 libext2fs_c_includes := external/e2fsprogs/lib
 
-libext2fs_cflags := -O2 -g -W -Wall \
+libext2fs_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \

@@ -61,9 +61,6 @@ typedef struct {
 
 #define cond_resched()	do { } while (0)
 
-#ifndef __BIONIC__
-typedef unsigned int __be32;
-#endif
 
 #define __init
 

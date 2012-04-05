@@ -9,7 +9,7 @@ resize2fs_src_files := \
 
 resize2fs_c_includes := external/e2fsprogs/lib
 
-resize2fs_cflags := -O2 -g -W -Wall \
+resize2fs_cflags := -Os -g -W -Wall \
 	-DHAVE_UNISTD_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_NETINET_IN_H \
