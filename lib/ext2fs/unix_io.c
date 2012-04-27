@@ -428,6 +428,7 @@ static errcode_t unix_open(const char *name, int flags, io_channel *channel)
 	struct unix_private_data *data = NULL;
 	errcode_t	retval;
 	int		open_flags;
+	int		f_nocache = 0;
 	struct stat	st;
 #ifdef __linux__
 	struct 		utsname ut;
@@ -464,7 +465,11 @@ static errcode_t unix_open(const char *name, int flags, io_channel *channel)
 	if (flags & IO_FLAG_EXCLUSIVE)
 		open_flags |= O_EXCL;
 	if (flags & IO_FLAG_DIRECT_IO)
+#if !defined(O_DIRECT) && defined(F_NOCACHE)
+		f_nocache = F_NOCACHE;
+#else
 		open_flags |= O_DIRECT;
+#endif
 	data->flags = flags;
 
 #ifdef HAVE_OPEN64
@@ -475,6 +480,13 @@ static errcode_t unix_open(const char *name, int flags, io_channel *channel)
 	if (data->dev < 0) {
 		retval = errno;
 		goto cleanup;
+	}
+
+	if (f_nocache) {
+		if (fcntl(data->dev, f_nocache, 1) < 0) {
+			retval = errno;
+			goto cleanup;
+		}
 	}
 
 #ifdef BLKSSZGET
