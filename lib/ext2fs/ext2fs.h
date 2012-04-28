@@ -1212,11 +1212,23 @@ _INLINE_ errcode_t ext2fs_get_memalign(unsigned long size,
 
 	if (align == 0)
 		align = 8;
+
+#if defined(__APPLE__) && defined(__MACH__)
+	/* MacOS 10.5, which we build for, doesn't have posix_memalign.
+	 * The only option is valloc, but only use it if the requested
+	 * alignment is larger than the alignment provided by malloc.
+	 * The idea for this fix came from a patch on the macports website.
+	 */
+	*(void **) ptr = (align > 16) ? valloc(size) : malloc(size);
+	if (*(void **)ptr == NULL)
+		return EXT2_ET_NO_MEMORY;
+#else
 	if ((retval = posix_memalign((void **) ptr, align, size))) {
 		if (retval == ENOMEM)
 			return EXT2_ET_NO_MEMORY;
 		return retval;
 	}
+#endif
 	return 0;
 }
 
