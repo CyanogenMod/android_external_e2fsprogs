@@ -802,61 +802,13 @@ no_has_journal:
 	return retval;
 }
 
-static errcode_t recover_ext3_journal(e2fsck_t ctx)
-{
-	struct problem_context	pctx;
-	journal_t *journal;
-	int retval;
-
-	clear_problem_context(&pctx);
-
-	journal_init_revoke_caches();
-	retval = e2fsck_get_journal(ctx, &journal);
-	if (retval)
-		return retval;
-
-	retval = e2fsck_journal_load(journal);
-	if (retval)
-		goto errout;
-
-	retval = journal_init_revoke(journal, 1024);
-	if (retval)
-		goto errout;
-
-	retval = -journal_recover(journal);
-	if (retval)
-		goto errout;
-
-	if (journal->j_failed_commit) {
-		pctx.ino = journal->j_failed_commit;
-		fix_problem(ctx, PR_0_JNL_TXN_CORRUPT, &pctx);
-		ctx->fs->super->s_state |= EXT2_ERROR_FS;
-		ext2fs_mark_super_dirty(ctx->fs);
-	}
-
-
-	if (journal->j_superblock->s_errno) {
-		ctx->fs->super->s_state |= EXT2_ERROR_FS;
-		ext2fs_mark_super_dirty(ctx->fs);
-		journal->j_superblock->s_errno = 0;
-		mark_buffer_dirty(journal->j_sb_buffer);
-	}
-
-	if (ctx->fs->flags & EXT2_FLAG_DIRTY)
-		ext2fs_flush(ctx->fs);  /* Force out any modifications */
-
-errout:
-	journal_destroy_revoke(journal);
-	journal_destroy_revoke_caches();
-	e2fsck_journal_release(ctx, journal, 1, 0);
-	return retval;
-}
-
 int e2fsck_run_ext3_journal(e2fsck_t ctx)
 {
+	struct problem_context	pctx;
+	journal_t *journal = 0;
 	io_manager io_ptr = ctx->fs->io->manager;
 	int blocksize = ctx->fs->blocksize;
-	errcode_t	retval, recover_retval;
+	errcode_t	retval;
 	io_stats	stats = 0;
 	unsigned long long kbytes_written = 0;
 
@@ -870,7 +822,27 @@ int e2fsck_run_ext3_journal(e2fsck_t ctx)
 	if (ctx->fs->flags & EXT2_FLAG_DIRTY)
 		ext2fs_flush(ctx->fs);	/* Force out any modifications */
 
-	recover_retval = recover_ext3_journal(ctx);
+	clear_problem_context(&pctx);
+
+	retval = journal_init_revoke_caches();
+	if (retval)
+		return retval;
+
+	retval = e2fsck_get_journal(ctx, &journal);
+	if (retval)
+		goto errout1;
+
+	retval = e2fsck_journal_load(journal);
+	if (retval)
+		goto errout2;
+
+	retval = journal_init_revoke(journal, 1024);
+	if (retval)
+		goto errout2;
+
+	retval = -journal_recover(journal);
+	if (retval)
+		goto errout3;
 
 	/*
 	 * Reload the filesystem context to get up-to-date data from disk
@@ -896,9 +868,31 @@ int e2fsck_run_ext3_journal(e2fsck_t ctx)
 	ctx->fs->flags |= EXT2_FLAG_MASTER_SB_ONLY;
 	ctx->fs->super->s_kbytes_written += kbytes_written;
 
-	/* Set the superblock flags */
-	e2fsck_clear_recover(ctx, recover_retval);
-	return recover_retval;
+	if (journal->j_failed_commit) {
+		pctx.ino = journal->j_failed_commit;
+		fix_problem(ctx, PR_0_JNL_TXN_CORRUPT, &pctx);
+		ctx->fs->super->s_state |= EXT2_ERROR_FS;
+		ext2fs_mark_super_dirty(ctx->fs);
+		ext2fs_flush(ctx->fs);
+	}
+
+	if (journal->j_superblock->s_errno) {
+		journal->j_superblock->s_errno = 0;
+		mark_buffer_dirty(journal->j_sb_buffer);
+		ctx->fs->super->s_state |= EXT2_ERROR_FS;
+		ext2fs_mark_super_dirty(ctx->fs);
+		ext2fs_flush(ctx->fs);
+	}
+
+errout3:
+	journal_destroy_revoke(journal);
+errout2:
+	e2fsck_journal_release(ctx, journal, 1, 0);
+errout1:
+	journal_destroy_revoke_caches();
+	e2fsck_clear_recover(ctx, retval);
+	return retval;
+
 }
 
 /*
