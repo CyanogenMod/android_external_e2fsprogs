@@ -842,9 +842,6 @@ static errcode_t recover_ext3_journal(e2fsck_t ctx)
 		mark_buffer_dirty(journal->j_sb_buffer);
 	}
 
-	if (ctx->fs->flags & EXT2_FLAG_DIRTY)
-		ext2fs_flush(ctx->fs);  /* Force out any modifications */
-
 errout:
 	journal_destroy_revoke(journal);
 	journal_destroy_revoke_caches();
