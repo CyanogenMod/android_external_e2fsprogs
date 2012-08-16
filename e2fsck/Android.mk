@@ -116,7 +116,7 @@ e2fsck_system_shared_libraries := libc
 
 e2fsck_c_includes := external/e2fsprogs/lib
 
-e2fsck_cflags := -O2 -g -W -Wall \
+e2fsck_cflags := -O2 -g -W -Wall -fno-strict-aliasing \
 	-DHAVE_DIRENT_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_INTTYPES_H \
