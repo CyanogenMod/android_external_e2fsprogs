@@ -32,6 +32,7 @@ mke2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 mke2fs_cflags_linux := \
@@ -147,6 +148,7 @@ tune2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 tune2fs_cflags += -DNO_CHECK_BB
@@ -252,6 +254,7 @@ badblocks_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 badblocks_shared_libraries := \

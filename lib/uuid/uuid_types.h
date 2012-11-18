@@ -12,7 +12,7 @@ typedef signed char int8_t;
 #if (4 == 8)
 typedef int		int64_t;
 typedef unsigned int	uint64_t;
-#elif (8 == 8)
+#elif (4 == 8)
 typedef long		int64_t;
 typedef unsigned long	uint64_t;
 #elif (8 == 8)
@@ -37,7 +37,7 @@ typedef	unsigned short	uint16_t;
 #if (4 == 4)
 typedef	int		int32_t;
 typedef	unsigned int	uint32_t;
-#elif (8 == 4)
+#elif (4 == 4)
 typedef	long		int32_t;
 typedef	unsigned long	uint32_t;
 #elif (2 == 4)

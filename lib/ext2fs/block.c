@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1995, 1996 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -104,7 +104,7 @@ static int block_iterate_ind(blk_t *ind_block, blk_t ref_block,
 	} else {
 		for (i = 0; i < limit; i++, ctx->bcount++, block_nr++) {
 			if (*block_nr == 0)
-				continue;
+				goto skip_sparse;
 			flags = (*ctx->func)(ctx->fs, block_nr, ctx->bcount,
 					     *ind_block, offset,
 					     ctx->priv_data);
@@ -113,6 +113,7 @@ static int block_iterate_ind(blk_t *ind_block, blk_t ref_block,
 				ret |= BLOCK_ABORT;
 				break;
 			}
+		skip_sparse:
 			offset += sizeof(blk_t);
 		}
 	}

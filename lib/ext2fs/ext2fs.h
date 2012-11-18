@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1995, 1996 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -26,6 +26,14 @@ extern "C" {
  * Non-GNU C compilers won't necessarily understand inline
  */
 #if (!defined(__GNUC__) && !defined(__WATCOMC__))
+#define NO_INLINE_FUNCS
+#endif
+
+/*
+ * The Apple compiler in Xcode 4.3 fails when inlines are enabled in
+ * so disable them for that compiler.
+ */
+#if __APPLE_CC__ >= 5621
 #define NO_INLINE_FUNCS
 #endif
 
@@ -52,6 +60,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #if EXT2_FLAT_INCLUDES
 #include "e2_types.h"
@@ -172,6 +181,7 @@ typedef struct ext2_file *ext2_file_t;
 #define EXT2_FLAG_EXCLUSIVE		0x4000
 #define EXT2_FLAG_SOFTSUPP_FEATURES	0x8000
 #define EXT2_FLAG_NOFREE_ON_ERROR	0x10000
+#define EXT2_FLAG_DIRECT_IO		0x80000
 
 /*
  * Special flag in the ext2 inode i_flag field that means that this is
@@ -942,6 +952,7 @@ extern errcode_t ext2fs_get_device_size2(const char *file, int blocksize,
 
 /* getsectsize.c */
 errcode_t ext2fs_get_device_sectsize(const char *file, int *sectsize);
+errcode_t ext2fs_get_device_phys_sectsize(const char *file, int *sectsize);
 
 /* i_block.c */
 errcode_t ext2fs_iblk_add_blocks(ext2_filsys fs, struct ext2_inode *inode,
@@ -1146,7 +1157,8 @@ extern errcode_t ext2fs_write_bb_FILE(ext2_badblocks_list bb_list,
 
 /* inline functions */
 extern errcode_t ext2fs_get_mem(unsigned long size, void *ptr);
-extern errcode_t ext2fs_get_array(unsigned long count, unsigned long size, void *ptr);
+extern errcode_t ext2fs_get_memalign(unsigned long size,
+				     unsigned long align, void *ptr);
 extern errcode_t ext2fs_free_mem(void *ptr);
 extern errcode_t ext2fs_resize_mem(unsigned long old_size,
 				   unsigned long size, void *ptr);
@@ -1198,6 +1210,33 @@ _INLINE_ errcode_t ext2fs_get_mem(unsigned long size, void *ptr)
 	if (!pp)
 		return EXT2_ET_NO_MEMORY;
 	memcpy(ptr, &pp, sizeof (pp));
+	return 0;
+}
+
+_INLINE_ errcode_t ext2fs_get_memalign(unsigned long size,
+				       unsigned long align, void *ptr)
+{
+	errcode_t retval;
+
+	if (align == 0)
+		align = 8;
+
+#if defined(__APPLE__) && defined(__MACH__)
+	/* MacOS 10.5, which we build for, doesn't have posix_memalign.
+	 * The only option is valloc, but only use it if the requested
+	 * alignment is larger than the alignment provided by malloc.
+	 * The idea for this fix came from a patch on the macports website.
+	 */
+	*(void **) ptr = (align > 16) ? valloc(size) : malloc(size);
+	if (*(void **)ptr == NULL)
+		return EXT2_ET_NO_MEMORY;
+#else
+	if ((retval = posix_memalign((void **) ptr, align, size))) {
+		if (retval == ENOMEM)
+			return EXT2_ET_NO_MEMORY;
+		return retval;
+	}
+#endif
 	return 0;
 }
 

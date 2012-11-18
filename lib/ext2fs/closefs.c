@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1995, 1996 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -145,6 +145,7 @@ static errcode_t write_primary_superblock(ext2_filsys fs,
 	errcode_t	retval;
 
 	if (!fs->io->manager->write_byte || !fs->orig_super) {
+	fallback:
 		io_channel_set_blksize(fs->io, SUPERBLOCK_OFFSET);
 		retval = io_channel_write_blk(fs->io, 1, -SUPERBLOCK_SIZE,
 					      super);
@@ -170,6 +171,8 @@ static errcode_t write_primary_superblock(ext2_filsys fs,
 		retval = io_channel_write_byte(fs->io,
 			       SUPERBLOCK_OFFSET + (2 * write_idx), size,
 					       new_super + write_idx);
+		if (retval == EXT2_ET_UNIMPLEMENTED)
+			goto fallback;
 		if (retval)
 			return retval;
 	}

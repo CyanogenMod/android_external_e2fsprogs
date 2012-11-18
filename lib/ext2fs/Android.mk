@@ -92,6 +92,7 @@ libext2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_EXT2_IOCTLS \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
+        -DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 libext2fs_cflags_linux := \

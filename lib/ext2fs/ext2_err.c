@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 static const char * const text[] = {
-		"EXT2FS Library version 1.41.11",
+		"EXT2FS Library version 1.41.14",
 		"Wrong magic number for ext2_filsys structure",
 		"Wrong magic number for badblocks_list structure",
 		"Wrong magic number for badblocks_iterate structure",

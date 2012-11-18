@@ -4,8 +4,8 @@
  * Copyright (C) 1993, 1994, 1995, 1996, 1997 Theodore Ts'o.
  *
  * %Begin-Header%
- * This file may be redistributed under the terms of the GNU Public
- * License.
+ * This file may be redistributed under the terms of the GNU Library
+ * General Public License, version 2.
  * %End-Header%
  */
 
@@ -156,9 +156,8 @@ errcode_t ext2fs_open_inode_scan(ext2_filsys fs, int buffer_blocks,
 			 (fs->blocksize / scan->inode_size - 1)) *
 			scan->inode_size / fs->blocksize;
 	}
-	retval = ext2fs_get_array(scan->inode_buffer_blocks,
-					  fs->blocksize,
-				&scan->inode_buffer);
+	retval = ext2fs_get_memalign(scan->inode_buffer_blocks * fs->blocksize,
+				     fs->blocksize, &scan->inode_buffer);
 	scan->done_group = 0;
 	scan->done_group_data = 0;
 	scan->bad_block_ptr = 0;
