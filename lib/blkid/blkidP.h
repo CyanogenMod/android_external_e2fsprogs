@@ -16,6 +16,10 @@
 #include <sys/types.h>
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <blkid/blkid.h>
 
 #include <blkid/list.h>
