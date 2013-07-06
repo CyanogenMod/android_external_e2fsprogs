@@ -8,6 +8,7 @@ libext2_blkid_src_files := \
 	getsize.c \
 	llseek.c \
 	probe.c \
+	probe_exfat.c \
 	read.c \
 	resolve.c \
 	save.c \
