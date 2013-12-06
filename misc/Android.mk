@@ -427,3 +427,62 @@ LOCAL_MODULE_STEM := lsattr
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_EXECUTABLE)
+
+#########################################################################
+# Build blkid
+#
+include $(CLEAR_VARS)
+
+blkid_src_files := \
+    blkid.c
+
+blkid_c_includes := \
+    external/e2fsprogs/lib
+
+lsattr_cflags := -O2 -g -W -Wall \
+    -DHAVE_UNISTD_H \
+    -DHAVE_ERRNO_H \
+    -DHAVE_NETINET_IN_H \
+    -DHAVE_SYS_IOCTL_H \
+    -DHAVE_SYS_MMAN_H \
+    -DHAVE_SYS_MOUNT_H \
+    -DHAVE_SYS_PRCTL_H \
+    -DHAVE_SYS_RESOURCE_H \
+    -DHAVE_SYS_SELECT_H \
+    -DHAVE_SYS_STAT_H \
+    -DHAVE_SYS_TYPES_H \
+    -DHAVE_STDLIB_H \
+    -DHAVE_STRCASECMP \
+    -DHAVE_STRDUP \
+    -DHAVE_MMAP \
+    -DHAVE_UTIME_H \
+    -DHAVE_GETPAGESIZE \
+    -DHAVE_LSEEK64 \
+    -DHAVE_LSEEK64_PROTOTYPE \
+    -DHAVE_EXT2_IOCTLS \
+    -DHAVE_LINUX_FD_H \
+    -DHAVE_TYPE_SSIZE_T \
+    -DHAVE_GETOPT_H \
+    -DHAVE_SYS_TIME_H \
+    -DHAVE_SYS_PARAM_H \
+    -DHAVE_SYSCONF
+
+blkid_shared_libraries := \
+    libext2fs \
+    libext2_blkid \
+    libext2_com_err \
+    libext2_e2p
+
+blkid_system_shared_libraries := libc
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(blkid_src_files)
+LOCAL_C_INCLUDES := $(blkid_c_includes)
+LOCAL_CFLAGS := $(blkid_cflags)
+LOCAL_SHARED_LIBRARIES := $(blkid_shared_libraries)
+LOCAL_SYSTEM_SHARED_LIBRARIES := $(blkid_system_shared_libraries)
+LOCAL_MODULE := blkid
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_EXECUTABLE)
