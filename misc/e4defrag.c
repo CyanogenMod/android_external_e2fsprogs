@@ -19,7 +19,6 @@
 #define _GNU_SOURCE
 #endif
 
-#include "config.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <endian.h>

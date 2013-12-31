@@ -18,7 +18,6 @@
 
 #define _XOPEN_SOURCE 600 /* for inclusion of PATH_MAX in Solaris */
 
-#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -69,6 +68,10 @@ extern int optind;
 
 #ifndef __sparc__
 #define ZAP_BOOTBLOCK
+#endif
+
+#ifndef ROOT_SYSCONFDIR
+#define ROOT_SYSCONFDIR "/etc"
 #endif
 
 #define DISCARD_STEP_MB		(2048)

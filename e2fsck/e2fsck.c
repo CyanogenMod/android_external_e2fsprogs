@@ -9,7 +9,6 @@
  * %End-Header%
  */
 
-#include "config.h"
 #include <errno.h>
 
 #include "e2fsck.h"

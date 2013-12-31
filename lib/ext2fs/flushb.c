@@ -10,7 +10,6 @@
  * %End-Header%
  */
 
-#include "config.h"
 #include <stdio.h>
 #if HAVE_ERRNO_H
 #include <errno.h>

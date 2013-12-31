@@ -5,7 +5,6 @@
  * under the terms of the GNU Public License.
  */
 
-#include "config.h"
 #include "e2fsck.h"
 #ifdef ENABLE_HTREE
 

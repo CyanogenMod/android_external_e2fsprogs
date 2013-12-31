@@ -2,7 +2,6 @@
  * io_manager.c --- the I/O manager abstraction
  */
 
-#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #if HAVE_UNISTD_H

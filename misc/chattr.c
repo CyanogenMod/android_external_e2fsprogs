@@ -20,7 +20,6 @@
 
 #define _LARGEFILE64_SOURCE
 
-#include "config.h"
 #include <sys/types.h>
 #include <dirent.h>
 #include <fcntl.h>

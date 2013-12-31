@@ -12,7 +12,6 @@
  * %End-Header%
  */
 
-#include "config.h"
 #include "resize2fs.h"
 
 void do_test(FILE *in, FILE *out);

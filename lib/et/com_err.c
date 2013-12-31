@@ -11,7 +11,6 @@
  * express or implied warranty.
  */
 
-#include "config.h"
 #include <stdio.h>
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>

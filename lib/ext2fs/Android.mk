@@ -10,6 +10,9 @@ libext2fs_src_files := \
 	bb_inode.c \
 	bitmaps.c \
 	bitops.c \
+	blkmap64_ba.c \
+	blkmap64_rb.c \
+	blknum.c \
 	block.c \
 	bmap.c \
 	check_desc.c \
@@ -25,10 +28,12 @@ libext2fs_src_files := \
 	expanddir.c \
 	ext_attr.c \
 	extent.c \
+	fileio.c \
 	finddev.c \
 	flushb.c \
 	freefs.c \
 	gen_bitmap.c \
+	gen_bitmap64.c \
 	get_pathname.c \
 	getsize.c \
 	getsectsize.c \
@@ -43,11 +48,15 @@ libext2fs_src_files := \
 	link.c \
 	llseek.c \
 	lookup.c \
+	mmp.c \
 	mkdir.c \
 	mkjournal.c \
 	native.c \
 	newdir.c \
 	openfs.c \
+	progress.c \
+	punch.c \
+	rbtree.c \
 	read_bb.c \
 	read_bb_file.c \
 	res_gdt.c \

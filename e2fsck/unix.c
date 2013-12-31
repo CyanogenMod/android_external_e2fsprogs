@@ -11,7 +11,6 @@
 
 #define _XOPEN_SOURCE 600 /* for inclusion of sa_handler in Solaris */
 
-#include "config.h"
 #include <stdio.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
@@ -66,6 +65,10 @@ e2fsck_t e2fsck_global_ctx;	/* Try your very best not to use this! */
 
 #ifdef CONFIG_JBD_DEBUG		/* Enabled by configure --enable-jfs-debug */
 int journal_enable_debug = -1;
+#endif
+
+#ifndef ROOT_SYSCONFDIR
+#define ROOT_SYSCONFDIR "/etc"
 #endif
 
 static void usage(e2fsck_t ctx)

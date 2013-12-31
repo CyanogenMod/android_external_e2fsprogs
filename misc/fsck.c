@@ -27,7 +27,6 @@
 
 #define _XOPEN_SOURCE 600 /* for inclusion of sa_handler in Solaris */
 
-#include "config.h"
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>

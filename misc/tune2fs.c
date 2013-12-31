@@ -26,7 +26,6 @@
  */
 
 #define _XOPEN_SOURCE 600 /* for inclusion of strptime() */
-#include "config.h"
 #include <fcntl.h>
 #include <grp.h>
 #ifdef HAVE_GETOPT_H

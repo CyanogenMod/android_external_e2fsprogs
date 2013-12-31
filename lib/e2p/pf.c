@@ -16,7 +16,6 @@
  * 93/10/30	- Creation
  */
 
-#include "config.h"
 #include <stdio.h>
 
 #include "e2p.h"

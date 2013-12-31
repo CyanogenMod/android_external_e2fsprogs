@@ -8,7 +8,6 @@
 
 #define _XOPEN_SOURCE 600 /* needed for strptime */
 
-#include "config.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>

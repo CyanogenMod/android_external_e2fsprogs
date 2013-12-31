@@ -20,7 +20,6 @@
  * 94/02/27	- Ported to use the ext2fs library
  */
 
-#include "config.h"
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #else

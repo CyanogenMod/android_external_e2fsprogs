@@ -9,7 +9,6 @@
  * %End-Header%
  */
 
-#include "config.h"
 #if HAVE_SECURE_GETENV
 #define _GNU_SOURCE
 #endif

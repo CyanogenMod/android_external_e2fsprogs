@@ -12,7 +12,6 @@
 #define _LARGEFILE_SOURCE
 #define _LARGEFILE64_SOURCE
 
-#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #ifdef HAVE_ERRNO_H

@@ -9,7 +9,6 @@
  * %End-Header%
  */
 
-#include "config.h"
 #include <stdio.h>
 #include <unistd.h>
 #ifdef HAVE_STDLIB_H

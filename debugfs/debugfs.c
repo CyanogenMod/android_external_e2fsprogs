@@ -8,7 +8,6 @@
  * Modifications by Robert Sanders <gt8134b@prism.gatech.edu>
  */
 
-#include "config.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>

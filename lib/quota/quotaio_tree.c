@@ -4,7 +4,6 @@
  * Jan Kara <jack@suse.cz> - sponsored by SuSE CR
  */
 
-#include "config.h"
 #include <sys/types.h>
 #include <errno.h>
 #include <stdio.h>

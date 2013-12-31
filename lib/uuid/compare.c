@@ -34,7 +34,6 @@
  * %End-Header%
  */
 
-#include "config.h"
 #include "uuidP.h"
 #include <string.h>
 

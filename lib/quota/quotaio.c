@@ -5,7 +5,6 @@
  * Aditya Kali <adityakali@google.com> - Ported to e2fsprogs
  */
 
-#include "config.h"
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>

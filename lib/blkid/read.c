@@ -12,7 +12,6 @@
 
 #define _XOPEN_SOURCE 600 /* for inclusion of strtoull */
 
-#include "config.h"
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>

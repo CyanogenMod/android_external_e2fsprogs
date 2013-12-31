@@ -13,7 +13,6 @@
 #define _GNU_SOURCE
 #endif
 
-#include "config.h"
 
 #if HAVE_UNISTD_H
 #include <unistd.h>

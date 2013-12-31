@@ -13,7 +13,6 @@
 
 #define _GNU_SOURCE 1
 
-#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>

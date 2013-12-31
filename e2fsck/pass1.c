@@ -38,7 +38,6 @@
  */
 
 #define _GNU_SOURCE 1 /* get strnlen() */
-#include "config.h"
 #include <string.h>
 #include <time.h>
 #ifdef HAVE_ERRNO_H

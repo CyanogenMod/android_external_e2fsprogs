@@ -33,7 +33,6 @@
 #define _GNU_SOURCE /* for O_DIRECT */
 #endif
 
-#include "config.h"
 #include <errno.h>
 #include <fcntl.h>
 #ifdef HAVE_GETOPT_H

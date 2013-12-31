@@ -10,7 +10,6 @@
  */
 
 
-#include "config.h"
 #include "resize2fs.h"
 #include <time.h>
 #ifdef HAVE_MALLOC_H
