@@ -5,7 +5,8 @@ resize2fs_src_files := \
 	resize2fs.c \
 	main.c \
 	online.c \
-	sim_progress.c
+	sim_progress.c \
+	resource_track.c
 
 resize2fs_c_includes := external/e2fsprogs/lib
 
