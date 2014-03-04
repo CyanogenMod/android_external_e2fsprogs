@@ -794,11 +794,15 @@ void e2fsck_set_bitmap_type(ext2_filsys fs, unsigned int default_type,
 
 	if (old_type)
 		*old_type = fs->default_bitmap_type;
+#ifdef HAVE_SIGNAL_H
 	profile_get_uint(e2fsck_global_ctx->profile, "bitmaps",
 			 profile_name, 0, default_type, &type);
 	profile_get_uint(e2fsck_global_ctx->profile, "bitmaps",
 			 "all", 0, type, &type);
 	fs->default_bitmap_type = type ? type : default_type;
+#else
+	fs->default_bitmap_type = default_type;
+#endif
 }
 
 errcode_t e2fsck_allocate_inode_bitmap(ext2_filsys fs, const char *descr,
