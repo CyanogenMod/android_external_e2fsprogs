@@ -38,8 +38,8 @@ extern char *optarg;
 #include "../version.h"
 #include "nls-enable.h"
 
-static const char * program_name = "e2initrd_helper";
-static char * device_name;
+const char * program_name = "get_fstab";
+char * device_name;
 static int open_flag;
 static int root_type;
 static blkid_cache cache = NULL;
@@ -73,7 +73,7 @@ static errcode_t get_file(ext2_filsys fs, const char * filename,
 {
 	errcode_t	retval;
 	char 		*buf;
-	ext2_file_t	e2_file = NULL;
+	ext2_file_t	e2_file;
 	unsigned int	got;
 	struct ext2_inode inode;
 	ext2_ino_t	ino;
@@ -101,7 +101,7 @@ static errcode_t get_file(ext2_filsys fs, const char * filename,
 
 	retval = ext2fs_file_open(fs, ino, 0, &e2_file);
 	if (retval)
-		goto errout;
+		return retval;
 
 	retval = ext2fs_file_read(e2_file, buf, inode.i_size, &got);
 	if (retval)
@@ -109,16 +109,13 @@ static errcode_t get_file(ext2_filsys fs, const char * filename,
 
 	retval = ext2fs_file_close(e2_file);
 	if (retval)
-		goto errout;
+		return retval;
 
 	ret_file->buf = buf;
 	ret_file->size = (int) got;
-	return 0;
 
 errout:
-	free(buf);
-	if (e2_file)
-		ext2fs_file_close(e2_file);
+	ext2fs_file_close(e2_file);
 	return retval;
 }
 
@@ -305,7 +302,6 @@ static void PRS(int argc, char **argv)
 	setlocale(LC_CTYPE, "");
 	bindtextdomain(NLS_CAT_NAME, LOCALEDIR);
 	textdomain(NLS_CAT_NAME);
-	set_com_err_gettext(gettext);
 #endif
 
 	while ((c = getopt(argc, argv, "rv")) != EOF) {
@@ -326,7 +322,7 @@ static void PRS(int argc, char **argv)
 		usage();
 	device_name = blkid_get_devname(NULL, argv[optind], NULL);
 	if (!device_name) {
-		com_err(program_name, 0, _("Unable to resolve '%s'"),
+		com_err("tune2fs", 0, _("Unable to resolve '%s'"),
 			argv[optind]);
 		exit(1);
 	}
@@ -341,10 +337,6 @@ static void get_root_type(ext2_filsys fs)
 	int		ret;
 
 	retval = get_file(fs, "/etc/fstab", &file);
-	if (retval) {
-		com_err(program_name, retval, "couldn't open /etc/fstab");
-		exit(1);
-	}
 
 	while (!mem_file_eof(&file)) {
 		buf = get_line(&file);

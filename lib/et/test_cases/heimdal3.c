@@ -5,11 +5,9 @@
 
 #include <stdlib.h>
 
-#define N_(a) a
-
 static const char * const text[] = {
-	N_("Test message 1"),
-	N_("Test message 2"),
+	"Test message 1",
+	"Test message 2",
     0
 };
 

@@ -10,7 +10,7 @@
  */
 
 struct ext2_inode_reference {
-	blk64_t	block;
+	blk_t	block;
 	__u16 offset;
 };
 

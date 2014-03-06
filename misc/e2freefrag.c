@@ -29,13 +29,11 @@ extern int optind;
 #include "ext2fs/ext2fs.h"
 #include "e2freefrag.h"
 
-static void usage(const char *prog)
+void usage(const char *prog)
 {
 	fprintf(stderr, "usage: %s [-c chunksize in kb] [-h] "
 		"device_name\n", prog);
-#ifndef DEBUGFS
 	exit(1);
-#endif
 }
 
 static int ul_log2(unsigned long arg)
@@ -50,7 +48,7 @@ static int ul_log2(unsigned long arg)
         return l;
 }
 
-static void init_chunk_info(ext2_filsys fs, struct chunk_info *info)
+void init_chunk_info(ext2_filsys fs, struct chunk_info *info)
 {
 	int i;
 
@@ -73,16 +71,15 @@ static void init_chunk_info(ext2_filsys fs, struct chunk_info *info)
 	}
 }
 
-static void update_chunk_stats(struct chunk_info *info,
-			       unsigned long chunk_size)
+void update_chunk_stats(struct chunk_info *info, unsigned long chunk_size)
 {
-	unsigned long idx;
+	unsigned long index;
 
-	idx = ul_log2(chunk_size) + 1;
-	if (idx >= MAX_HIST)
-		idx = MAX_HIST-1;
-	info->histogram.fc_chunks[idx]++;
-	info->histogram.fc_blocks[idx] += chunk_size;
+	index = ul_log2(chunk_size) + 1;
+	if (index >= MAX_HIST)
+		index = MAX_HIST-1;
+	info->histogram.fc_chunks[index]++;
+	info->histogram.fc_blocks[index] += chunk_size;
 
 	if (chunk_size > info->max)
 		info->max = chunk_size;
@@ -92,9 +89,9 @@ static void update_chunk_stats(struct chunk_info *info,
 	info->real_free_chunks++;
 }
 
-static void scan_block_bitmap(ext2_filsys fs, struct chunk_info *info)
+void scan_block_bitmap(ext2_filsys fs, struct chunk_info *info)
 {
-	unsigned long long blocks_count = ext2fs_blocks_count(fs->super);
+	unsigned long long blocks_count = fs->super->s_blocks_count;
 	unsigned long long chunks = (blocks_count + info->blks_in_chunk) >>
 				(info->chunkbits - info->blocksize_bits);
 	unsigned long long chunk_num;
@@ -122,8 +119,8 @@ static void scan_block_bitmap(ext2_filsys fs, struct chunk_info *info)
 				blk = fs->super->s_first_data_block;
 				chunk_start_blk = blk;
 			}
-			used = ext2fs_fast_test_block_bitmap2(fs->block_map,
-				chunk_start_blk >> fs->cluster_ratio_bits);
+			used = ext2fs_fast_test_block_bitmap(fs->block_map,
+							     chunk_start_blk);
 			if (!used) {
 				last_chunk_size++;
 				chunk_free++;
@@ -142,50 +139,49 @@ static void scan_block_bitmap(ext2_filsys fs, struct chunk_info *info)
 		update_chunk_stats(info, last_chunk_size);
 }
 
-static errcode_t get_chunk_info(ext2_filsys fs, struct chunk_info *info,
-				FILE *f)
+errcode_t get_chunk_info(ext2_filsys fs, struct chunk_info *info)
 {
 	unsigned long total_chunks;
-	const char *unitp = "KMGTPEZY";
+	char *unitp = "KMGTPEZY";
 	int units = 10;
-	unsigned long start = 0, end;
+	unsigned long start = 0, end, cum;
 	int i, retval = 0;
 
 	scan_block_bitmap(fs, info);
 
-	fprintf(f, "Total blocks: %llu\nFree blocks: %u (%0.1f%%)\n",
-		ext2fs_blocks_count(fs->super), fs->super->s_free_blocks_count,
-		(double)fs->super->s_free_blocks_count * 100 /
-		ext2fs_blocks_count(fs->super));
+	printf("Total blocks: %u\nFree blocks: %u (%0.1f%%)\n",
+	       fs->super->s_blocks_count, fs->super->s_free_blocks_count,
+	       (double)fs->super->s_free_blocks_count * 100 /
+						fs->super->s_blocks_count);
 
 	if (info->chunkbytes) {
-		fprintf(f, "\nChunksize: %lu bytes (%u blocks)\n",
-			info->chunkbytes, info->blks_in_chunk);
-		total_chunks = (ext2fs_blocks_count(fs->super) +
+		printf("\nChunksize: %lu bytes (%u blocks)\n",
+		       info->chunkbytes, info->blks_in_chunk);
+		total_chunks = (fs->super->s_blocks_count +
 				info->blks_in_chunk) >>
 			(info->chunkbits - info->blocksize_bits);
-		fprintf(f, "Total chunks: %lu\nFree chunks: %lu (%0.1f%%)\n",
-			total_chunks, info->free_chunks,
-			(double)info->free_chunks * 100 / total_chunks);
+		printf("Total chunks: %lu\nFree chunks: %lu (%0.1f%%)\n",
+		       total_chunks, info->free_chunks,
+		       (double)info->free_chunks * 100 / total_chunks);
 	}
 
 	/* Display chunk information in KB */
 	if (info->real_free_chunks) {
-		unsigned int scale = fs->blocksize >> 10;
-		info->min = info->min * scale;
-		info->max = info->max * scale;
-		info->avg = info->avg / info->real_free_chunks * scale;
+		info->min = (info->min * fs->blocksize) >> 10;
+		info->max = (info->max * fs->blocksize) >> 10;
+		info->avg = (info->avg / info->real_free_chunks *
+			     fs->blocksize) >> 10;
 	} else {
 		info->min = 0;
 	}
 
-	fprintf(f, "\nMin. free extent: %lu KB \nMax. free extent: %lu KB\n"
-		"Avg. free extent: %lu KB\n", info->min, info->max, info->avg);
-	fprintf(f, "Num. free extent: %lu\n", info->real_free_chunks);
+	printf("\nMin. free extent: %lu KB \nMax. free extent: %lu KB\n"
+	       "Avg. free extent: %lu KB\n", info->min, info->max, info->avg);
+	printf("Num. free extent: %lu\n", info->real_free_chunks);
 
-	fprintf(f, "\nHISTOGRAM OF FREE EXTENT SIZES:\n");
-	fprintf(f, "%s :  %12s  %12s  %7s\n", "Extent Size Range",
-		"Free extents", "Free Blocks", "Percent");
+	printf("\nHISTOGRAM OF FREE EXTENT SIZES:\n");
+	printf("%s :  %12s  %12s  %7s\n", "Extent Size Range", "Free extents",
+	       "Free Blocks", "Percent");
 	for (i = 0; i < MAX_HIST; i++) {
 		end = 1 << (i + info->blocksize_bits - units);
 		if (info->histogram.fc_chunks[i] != 0) {
@@ -194,12 +190,12 @@ static errcode_t get_chunk_info(ext2_filsys fs, struct chunk_info *info,
 			sprintf(end_str, "%5lu%c-", end, *unitp);
 			if (i == MAX_HIST-1)
 				strcpy(end_str, "max ");
-			fprintf(f, "%5lu%c...%7s  :  %12lu  %12lu  %6.2f%%\n",
-				start, *unitp, end_str,
-				info->histogram.fc_chunks[i],
-				info->histogram.fc_blocks[i],
-				(double)info->histogram.fc_blocks[i] * 100 /
-				fs->super->s_free_blocks_count);
+			printf("%5lu%c...%7s  :  %12lu  %12lu  %6.2f%%\n",
+			       start, *unitp, end_str,
+			       info->histogram.fc_chunks[i],
+			       info->histogram.fc_blocks[i],
+			       (double)info->histogram.fc_blocks[i] * 100 /
+			       fs->super->s_free_blocks_count);
 		}
 		start = end;
 		if (start == 1<<10) {
@@ -212,7 +208,7 @@ static errcode_t get_chunk_info(ext2_filsys fs, struct chunk_info *info,
 	return retval;
 }
 
-static void close_device(char *device_name, ext2_filsys fs)
+void close_device(char *device_name, ext2_filsys fs)
 {
 	int retval = ext2fs_close(fs);
 
@@ -220,12 +216,12 @@ static void close_device(char *device_name, ext2_filsys fs)
 		com_err(device_name, retval, "while closing the filesystem.\n");
 }
 
-static void collect_info(ext2_filsys fs, struct chunk_info *chunk_info, FILE *f)
+void collect_info(ext2_filsys fs, struct chunk_info *chunk_info)
 {
-	unsigned int retval = 0;
+	unsigned int retval = 0, i, free_blks;
 
-	fprintf(f, "Device: %s\n", fs->device_name);
-	fprintf(f, "Blocksize: %u bytes\n", fs->blocksize);
+	printf("Device: %s\n", fs->device_name);
+	printf("Blocksize: %u bytes\n", fs->blocksize);
 
 	retval = ext2fs_read_block_bitmap(fs);
 	if (retval) {
@@ -236,7 +232,7 @@ static void collect_info(ext2_filsys fs, struct chunk_info *chunk_info, FILE *f)
 
 	init_chunk_info(fs, chunk_info);
 
-	retval = get_chunk_info(fs, chunk_info, f);
+	retval = get_chunk_info(fs, chunk_info);
 	if (retval) {
 		com_err(fs->device_name, retval, "while collecting chunk info");
                 close_device(fs->device_name, fs);
@@ -244,45 +240,30 @@ static void collect_info(ext2_filsys fs, struct chunk_info *chunk_info, FILE *f)
 	}
 }
 
-#ifndef DEBUGFS
-static void open_device(char *device_name, ext2_filsys *fs)
+void open_device(char *device_name, ext2_filsys *fs)
 {
 	int retval;
-	int flag = EXT2_FLAG_FORCE | EXT2_FLAG_64BITS;
+	int flag = EXT2_FLAG_FORCE;
 
 	retval = ext2fs_open(device_name, flag, 0, 0, unix_io_manager, fs);
 	if (retval) {
 		com_err(device_name, retval, "while opening filesystem");
 		exit(1);
 	}
-	(*fs)->default_bitmap_type = EXT2FS_BMAP64_RBTREE;
 }
-#endif
 
-#ifdef DEBUGFS
-#include "debugfs.h"
-
-void do_freefrag(int argc, char **argv)
-#else
 int main(int argc, char *argv[])
-#endif
 {
-	struct chunk_info chunk_info;
+	struct chunk_info chunk_info = { };
+	errcode_t retval = 0;
 	ext2_filsys fs = NULL;
+	char *device_name;
 	char *progname;
 	char *end;
 	int c;
 
-#ifdef DEBUGFS
-	if (check_fs_open(argv[0]))
-		return;
-#else
-	char *device_name;
-
 	add_error_table(&et_ext2_error_table);
-#endif
 	progname = argv[0];
-	memset(&chunk_info, 0, sizeof(chunk_info));
 
 	while ((c = getopt(argc, argv, "c:h")) != EOF) {
 		switch (c) {
@@ -301,14 +282,15 @@ int main(int argc, char *argv[])
 			}
 			chunk_info.chunkbytes *= 1024;
 			break;
-		case 'h':
 		default:
+			fprintf(stderr, "%s: bad option '%c'\n",
+				progname, c);
+		case 'h':
 			usage(progname);
 			break;
 		}
 	}
 
-#ifndef DEBUGFS
 	if (optind == argc) {
 		fprintf(stderr, "%s: missing device name.\n", progname);
 		usage(progname);
@@ -317,19 +299,14 @@ int main(int argc, char *argv[])
 	device_name = argv[optind];
 
 	open_device(device_name, &fs);
-#else
-	fs = current_fs;
-#endif
 
 	if (chunk_info.chunkbytes && (chunk_info.chunkbytes < fs->blocksize)) {
 		fprintf(stderr, "%s: chunksize must be greater than or equal "
 			"to filesystem blocksize.\n", progname);
 		exit(1);
 	}
-	collect_info(fs, &chunk_info, stdout);
-#ifndef DEBUGFS
+	collect_info(fs, &chunk_info);
 	close_device(device_name, fs);
 
-	return 0;
-#endif
+	return retval;
 }

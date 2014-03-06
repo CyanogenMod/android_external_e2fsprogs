@@ -38,8 +38,7 @@ libext2_profile_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
         -DHAVE_SYS_PARAM_H \
-	-DHAVE_SYSCONF \
-	-DDISABLE_BACKTRACE=1
+	-DHAVE_SYSCONF
 
 include $(CLEAR_VARS)
 
@@ -79,7 +78,6 @@ e2fsck_src_files :=  \
 	pass3.c \
 	pass4.c \
 	pass5.c \
-	logfile.c \
 	journal.c \
 	recovery.c \
 	revoke.c \
@@ -92,24 +90,21 @@ e2fsck_src_files :=  \
 	problem.c \
 	message.c \
 	ea_refcount.c \
-	quota.c \
 	rehash.c \
-	region.c \
-	sigcatcher.c
+	region.c
 
 e2fsck_shared_libraries := \
 	libext2fs \
 	libext2_blkid \
 	libext2_uuid \
 	libext2_profile \
-	libext2_quota \
 	libext2_com_err \
 	libext2_e2p
 e2fsck_system_shared_libraries := libc
 
 e2fsck_c_includes := external/e2fsprogs/lib
 
-e2fsck_cflags := -O2 -g -W -Wall -fno-strict-aliasing \
+e2fsck_cflags := -O2 -g -W -Wall \
 	-DHAVE_DIRENT_H \
 	-DHAVE_ERRNO_H \
 	-DHAVE_INTTYPES_H \
@@ -138,8 +133,7 @@ e2fsck_cflags := -O2 -g -W -Wall -fno-strict-aliasing \
 	-DENABLE_HTREE=1 \
 	-DHAVE_SYS_TIME_H \
         -DHAVE_SYS_PARAM_H \
-	-DHAVE_SYSCONF \
-	-DDISABLE_BACKTRACE=1
+	-DHAVE_SYSCONF
 
 include $(CLEAR_VARS)
 

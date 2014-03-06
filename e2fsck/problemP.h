@@ -15,8 +15,6 @@ struct e2fsck_problem {
 	char		prompt;
 	int		flags;
 	problem_t	second_code;
-	int		count;
-	int		max_count;
 };
 
 struct latch_descr {

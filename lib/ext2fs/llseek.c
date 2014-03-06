@@ -89,14 +89,17 @@ static ext2_loff_t my_llseek (int fd, ext2_loff_t offset, int origin)
 
 ext2_loff_t ext2fs_llseek (int fd, ext2_loff_t offset, int origin)
 {
-#if SIZEOF_OFF_T >= SIZEOF_LONG_LONG
-	return lseek (fd, offset, origin);
-#else
 	ext2_loff_t result;
 	static int do_compat = 0;
 
-	if (do_compat)
-		goto fallback;
+	if ((sizeof(off_t) >= sizeof(ext2_loff_t)) ||
+	    (offset < ((ext2_loff_t) 1 << ((sizeof(off_t)*8) -1))))
+		return lseek(fd, (off_t) offset, origin);
+
+	if (do_compat) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	result = my_llseek (fd, offset, origin);
 	if (result == -1 && errno == ENOSYS) {
@@ -105,14 +108,9 @@ ext2_loff_t ext2fs_llseek (int fd, ext2_loff_t offset, int origin)
 		 * which does not support the llseek system call
 		 */
 		do_compat++;
-	fallback:
-		if (offset < ((ext2_loff_t) 1 << ((sizeof(off_t)*8) -1)))
-			return lseek(fd, (off_t) offset, origin);
 		errno = EINVAL;
-		return -1;
 	}
 	return result;
-#endif
 }
 
 #else /* !linux */

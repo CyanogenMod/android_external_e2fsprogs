@@ -5,10 +5,8 @@
 
 #include <stdlib.h>
 
-#define N_(a) a
-
 static const char * const text[] = {
-	N_("New password was found in a dictionary of possible passwords and\ntherefore may be easily guessed. Please choose another password.\nSee the ovpasswd man page for help in choosing a good password."),
+	"New password was found in a dictionary of possible passwords and\ntherefore may be easily guessed. Please choose another password.\nSee the ovpasswd man page for help in choosing a good password.",
     0
 };
 

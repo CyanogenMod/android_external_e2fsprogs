@@ -7,5 +7,5 @@ Name: blkid
 Description: Block device id library
 Version: @E2FSPROGS_VERSION@
 Requires.private: uuid
-Cflags: -I${includedir}/blkid -I${includedir}
+Cflags: -I${includedir}/blkid
 Libs: -L${libdir} -lblkid
