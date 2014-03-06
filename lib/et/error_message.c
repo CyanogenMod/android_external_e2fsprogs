@@ -16,9 +16,6 @@
  * express or implied warranty.
  */
 
-#if HAVE_SECURE_GETENV
-#define _GNU_SOURCE
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,20 +97,6 @@ int et_list_unlock(void)
 	return 0;
 }
 
-typedef char *(*gettextf) (const char *);
-
-static gettextf com_err_gettext = NULL;
-
-gettextf set_com_err_gettext(gettextf new_proc)
-{
-    gettextf x = com_err_gettext;
-
-    com_err_gettext = new_proc;
-
-    return x;
-}
-
-
 const char * error_message (errcode_t code)
 {
     int offset;
@@ -147,10 +130,7 @@ const char * error_message (errcode_t code)
 	    } else {
 		const char *msg = et->table->msgs[offset];
 		et_list_unlock();
-		if (com_err_gettext)
-		    return (*com_err_gettext)(msg);
-		else
-		    return msg;
+		return msg;
 	    }
 	}
     }
@@ -162,10 +142,7 @@ const char * error_message (errcode_t code)
 	    } else {
 		const char *msg = et->table->msgs[offset];
 		et_list_unlock();
-		if (com_err_gettext)
-		    return (*com_err_gettext)(msg);
-		else
-		    return msg;
+		return msg;
 	    }
 	}
     }
@@ -210,9 +187,7 @@ static char *safe_getenv(const char *arg)
 #endif
 #endif
 
-#if defined(HAVE_SECURE_GETENV)
-	return secure_getenv(arg);
-#elif defined(HAVE___SECURE_GETENV)
+#ifdef HAVE___SECURE_GETENV
 	return __secure_getenv(arg);
 #else
 	return getenv(arg);

@@ -103,12 +103,12 @@ static errcode_t alloc_icount(ext2_filsys fs, int flags, ext2_icount_t *ret)
 		return retval;
 	memset(icount, 0, sizeof(struct ext2_icount));
 
-	retval = ext2fs_allocate_inode_bitmap(fs, "icount", &icount->single);
+	retval = ext2fs_allocate_inode_bitmap(fs, 0, &icount->single);
 	if (retval)
 		goto errout;
 
 	if (flags & EXT2_ICOUNT_OPT_INCREMENT) {
-		retval = ext2fs_allocate_inode_bitmap(fs, "icount_inc",
+		retval = ext2fs_allocate_inode_bitmap(fs, 0,
 						      &icount->multiple);
 		if (retval)
 			goto errout;
@@ -179,7 +179,6 @@ errcode_t ext2fs_create_icount_tdb(ext2_filsys fs, char *tdb_dir,
 	ext2_icount_t	icount;
 	errcode_t	retval;
 	char 		*fn, uuid[40];
-	ext2_ino_t	num_inodes;
 	int		fd;
 
 	retval = alloc_icount(fs, flags,  &icount);
@@ -192,21 +191,9 @@ errcode_t ext2fs_create_icount_tdb(ext2_filsys fs, char *tdb_dir,
 	uuid_unparse(fs->super->s_uuid, uuid);
 	sprintf(fn, "%s/%s-icount-XXXXXX", tdb_dir, uuid);
 	fd = mkstemp(fn);
-	if (fd < 0)
-		return fd;
-
-	/*
-	 * This is an overestimate of the size that we will need; the
-	 * ideal value is the number of used inodes with a count
-	 * greater than 1.  OTOH the times when we really need this is
-	 * with the backup programs that use lots of hard links, in
-	 * which case the number of inodes in use approaches the ideal
-	 * value.
-	 */
-	num_inodes = fs->super->s_inodes_count - fs->super->s_free_inodes_count;
 
 	icount->tdb_fn = fn;
-	icount->tdb = tdb_open(fn, num_inodes, TDB_NOLOCK | TDB_NOSYNC,
+	icount->tdb = tdb_open(fn, 0, TDB_CLEAR_IF_FIRST,
 			       O_RDWR | O_CREAT | O_TRUNC, 0600);
 	if (icount->tdb) {
 		close(fd);
@@ -352,7 +339,9 @@ static struct ext2_icount_el *insert_icount_el(ext2_icount_t icount,
 static struct ext2_icount_el *get_icount_el(ext2_icount_t icount,
 					    ext2_ino_t ino, int create)
 {
+	float	range;
 	int	low, high, mid;
+	ext2_ino_t	lowval, highval;
 
 	if (!icount || !icount->list)
 		return 0;
@@ -374,7 +363,31 @@ static struct ext2_icount_el *get_icount_el(ext2_icount_t icount,
 	low = 0;
 	high = (int) icount->count-1;
 	while (low <= high) {
-		mid = ((unsigned)low + (unsigned)high) >> 1;
+#if 0
+		mid = (low+high)/2;
+#else
+		if (low == high)
+			mid = low;
+		else {
+			/* Interpolate for efficiency */
+			lowval = icount->list[low].ino;
+			highval = icount->list[high].ino;
+
+			if (ino < lowval)
+				range = 0;
+			else if (ino > highval)
+				range = 1;
+			else {
+				range = ((float) (ino - lowval)) /
+					(highval - lowval);
+				if (range > 0.9)
+					range = 0.9;
+				if (range < 0.1)
+					range = 0.1;
+			}
+			mid = low + ((int) (range * (high-low)));
+		}
+#endif
 		if (ino == icount->list[mid].ino) {
 			icount->cursor = mid+1;
 			return &icount->list[mid];
@@ -485,12 +498,12 @@ errcode_t ext2fs_icount_fetch(ext2_icount_t icount, ext2_ino_t ino, __u16 *ret)
 	if (!ino || (ino > icount->num_inodes))
 		return EXT2_ET_INVALID_ARGUMENT;
 
-	if (ext2fs_test_inode_bitmap2(icount->single, ino)) {
+	if (ext2fs_test_inode_bitmap(icount->single, ino)) {
 		*ret = 1;
 		return 0;
 	}
 	if (icount->multiple &&
-	    !ext2fs_test_inode_bitmap2(icount->multiple, ino)) {
+	    !ext2fs_test_inode_bitmap(icount->multiple, ino)) {
 		*ret = 0;
 		return 0;
 	}
@@ -509,7 +522,7 @@ errcode_t ext2fs_icount_increment(ext2_icount_t icount, ext2_ino_t ino,
 	if (!ino || (ino > icount->num_inodes))
 		return EXT2_ET_INVALID_ARGUMENT;
 
-	if (ext2fs_test_inode_bitmap2(icount->single, ino)) {
+	if (ext2fs_test_inode_bitmap(icount->single, ino)) {
 		/*
 		 * If the existing count is 1, then we know there is
 		 * no entry in the list.
@@ -517,14 +530,14 @@ errcode_t ext2fs_icount_increment(ext2_icount_t icount, ext2_ino_t ino,
 		if (set_inode_count(icount, ino, 2))
 			return EXT2_ET_NO_MEMORY;
 		curr_value = 2;
-		ext2fs_unmark_inode_bitmap2(icount->single, ino);
+		ext2fs_unmark_inode_bitmap(icount->single, ino);
 	} else if (icount->multiple) {
 		/*
 		 * The count is either zero or greater than 1; if the
 		 * inode is set in icount->multiple, then there should
 		 * be an entry in the list, so we need to fix it.
 		 */
-		if (ext2fs_test_inode_bitmap2(icount->multiple, ino)) {
+		if (ext2fs_test_inode_bitmap(icount->multiple, ino)) {
 			get_inode_count(icount, ino, &curr_value);
 			curr_value++;
 			if (set_inode_count(icount, ino, curr_value))
@@ -534,7 +547,7 @@ errcode_t ext2fs_icount_increment(ext2_icount_t icount, ext2_ino_t ino,
 			 * The count was zero; mark the single bitmap
 			 * and return.
 			 */
-			ext2fs_mark_inode_bitmap2(icount->single, ino);
+			ext2fs_mark_inode_bitmap(icount->single, ino);
 			if (ret)
 				*ret = 1;
 			return 0;
@@ -550,7 +563,7 @@ errcode_t ext2fs_icount_increment(ext2_icount_t icount, ext2_ino_t ino,
 			return EXT2_ET_NO_MEMORY;
 	}
 	if (icount->multiple)
-		ext2fs_mark_inode_bitmap2(icount->multiple, ino);
+		ext2fs_mark_inode_bitmap(icount->multiple, ino);
 	if (ret)
 		*ret = icount_16_xlate(curr_value);
 	return 0;
@@ -566,10 +579,10 @@ errcode_t ext2fs_icount_decrement(ext2_icount_t icount, ext2_ino_t ino,
 
 	EXT2_CHECK_MAGIC(icount, EXT2_ET_MAGIC_ICOUNT);
 
-	if (ext2fs_test_inode_bitmap2(icount->single, ino)) {
-		ext2fs_unmark_inode_bitmap2(icount->single, ino);
+	if (ext2fs_test_inode_bitmap(icount->single, ino)) {
+		ext2fs_unmark_inode_bitmap(icount->single, ino);
 		if (icount->multiple)
-			ext2fs_unmark_inode_bitmap2(icount->multiple, ino);
+			ext2fs_unmark_inode_bitmap(icount->multiple, ino);
 		else {
 			set_inode_count(icount, ino, 0);
 		}
@@ -579,7 +592,7 @@ errcode_t ext2fs_icount_decrement(ext2_icount_t icount, ext2_ino_t ino,
 	}
 
 	if (icount->multiple &&
-	    !ext2fs_test_inode_bitmap2(icount->multiple, ino))
+	    !ext2fs_test_inode_bitmap(icount->multiple, ino))
 		return EXT2_ET_INVALID_ARGUMENT;
 
 	get_inode_count(icount, ino, &curr_value);
@@ -590,9 +603,9 @@ errcode_t ext2fs_icount_decrement(ext2_icount_t icount, ext2_ino_t ino,
 		return EXT2_ET_NO_MEMORY;
 
 	if (curr_value == 1)
-		ext2fs_mark_inode_bitmap2(icount->single, ino);
+		ext2fs_mark_inode_bitmap(icount->single, ino);
 	if ((curr_value == 0) && icount->multiple)
-		ext2fs_unmark_inode_bitmap2(icount->multiple, ino);
+		ext2fs_unmark_inode_bitmap(icount->multiple, ino);
 
 	if (ret)
 		*ret = icount_16_xlate(curr_value);
@@ -608,19 +621,19 @@ errcode_t ext2fs_icount_store(ext2_icount_t icount, ext2_ino_t ino,
 	EXT2_CHECK_MAGIC(icount, EXT2_ET_MAGIC_ICOUNT);
 
 	if (count == 1) {
-		ext2fs_mark_inode_bitmap2(icount->single, ino);
+		ext2fs_mark_inode_bitmap(icount->single, ino);
 		if (icount->multiple)
-			ext2fs_unmark_inode_bitmap2(icount->multiple, ino);
+			ext2fs_unmark_inode_bitmap(icount->multiple, ino);
 		return 0;
 	}
 	if (count == 0) {
-		ext2fs_unmark_inode_bitmap2(icount->single, ino);
+		ext2fs_unmark_inode_bitmap(icount->single, ino);
 		if (icount->multiple) {
 			/*
 			 * If the icount->multiple bitmap is enabled,
 			 * we can just clear both bitmaps and we're done
 			 */
-			ext2fs_unmark_inode_bitmap2(icount->multiple, ino);
+			ext2fs_unmark_inode_bitmap(icount->multiple, ino);
 		} else
 			set_inode_count(icount, ino, 0);
 		return 0;
@@ -628,9 +641,9 @@ errcode_t ext2fs_icount_store(ext2_icount_t icount, ext2_ino_t ino,
 
 	if (set_inode_count(icount, ino, count))
 		return EXT2_ET_NO_MEMORY;
-	ext2fs_unmark_inode_bitmap2(icount->single, ino);
+	ext2fs_unmark_inode_bitmap(icount->single, ino);
 	if (icount->multiple)
-		ext2fs_mark_inode_bitmap2(icount->multiple, ino);
+		ext2fs_mark_inode_bitmap(icount->multiple, ino);
 	return 0;
 }
 
@@ -731,9 +744,9 @@ static void setup(void)
 	initialize_ext2_error_table();
 
 	memset(&param, 0, sizeof(param));
-	ext2fs_blocks_count_set(&param, 12000);
+	param.s_blocks_count = 12000;
 
-	retval = ext2fs_initialize("test fs", EXT2_FLAG_64BITS, &param,
+	retval = ext2fs_initialize("test fs", 0, &param,
 				   test_io_manager, &test_fs);
 	if (retval) {
 		com_err("setup", retval,

@@ -1,7 +1,5 @@
-if test -x $DEBUGFS_EXE; then
-
 SKIP_GUNZIP="true"
-TEST_DATA="$test_name.tmp"
+TEST_DATA="test.data"
 
 echo "/ Murphy Magic.  The SeCrEt of the UnIvErSe is 43, NOT 42" > $TEST_DATA
 
@@ -50,7 +48,3 @@ export E2FSCK_TIME
 rm -f $TEST_DATA
 
 unset E2FSCK_TIME TEST_DATA
-
-else #if test -x $DEBUGFS_EXE; then
-	echo "$test_name: $test_description: skipped"
-fi 

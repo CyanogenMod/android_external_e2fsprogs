@@ -44,10 +44,9 @@ extern int optind;
 
 #define in_use(m, x)	(ext2fs_test_bit ((x), (m)))
 
-static const char * program_name = "dumpe2fs";
-static char * device_name = NULL;
-static int hex_format = 0;
-static int blocks64 = 0;
+const char * program_name = "dumpe2fs";
+char * device_name = NULL;
+int hex_format = 0;
 
 static void usage(void)
 {
@@ -56,48 +55,41 @@ static void usage(void)
 	exit (1);
 }
 
-static void print_number(unsigned long long num)
+static void print_number(unsigned long num)
 {
-	if (hex_format) {
-		if (blocks64)
-			printf("0x%08llx", num);
-		else
-			printf("0x%04llx", num);
-	} else
-		printf("%llu", num);
+	if (hex_format)
+		printf("0x%04lx", num);
+	else
+		printf("%lu", num);
 }
 
-static void print_range(unsigned long long a, unsigned long long b)
+static void print_range(unsigned long a, unsigned long b)
 {
-	if (hex_format) {
-		if (blocks64)
-			printf("0x%08llx-0x%08llx", a, b);
-		else
-			printf("0x%04llx-0x%04llx", a, b);
-	} else
-		printf("%llu-%llu", a, b);
+	if (hex_format)
+		printf("0x%04lx-0x%04lx", a, b);
+	else
+		printf("%lu-%lu", a, b);
 }
 
-static void print_free(unsigned long group, char * bitmap,
-		       unsigned long num, unsigned long offset, int ratio)
+static void print_free (unsigned long group, char * bitmap,
+			unsigned long nbytes, unsigned long offset)
 {
 	int p = 0;
 	unsigned long i;
 	unsigned long j;
 
-	offset /= ratio;
-	offset += group * num;
-	for (i = 0; i < num; i++)
+	offset += group * nbytes;
+	for (i = 0; i < nbytes; i++)
 		if (!in_use (bitmap, i))
 		{
 			if (p)
 				printf (", ");
-			print_number((i + offset) * ratio);
-			for (j = i; j < num && !in_use (bitmap, j); j++)
+			print_number(i + offset);
+			for (j = i; j < nbytes && !in_use (bitmap, j); j++)
 				;
 			if (--j != i) {
 				fputc('-', stdout);
-				print_number((j + offset) * ratio);
+				print_number(j + offset);
 				i = j;
 			}
 			p = 1;
@@ -121,7 +113,7 @@ static void print_bg_opts(ext2_filsys fs, dgrp_t i)
 	int first = 1, bg_flags = 0;
 
 	if (fs->super->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM)
-		bg_flags = ext2fs_bg_flags(fs, i);
+		bg_flags = fs->group_desc[i].bg_flags;
 
 	print_bg_opt(bg_flags, EXT2_BG_INODE_UNINIT, "INODE_UNINIT",
  		     &first);
@@ -143,31 +135,25 @@ static void print_bg_rel_offset(ext2_filsys fs, blk64_t block, int itable,
 		printf(" (+%u)", (unsigned)(block - first_block));
 	} else if (fs->super->s_feature_incompat &
 		   EXT4_FEATURE_INCOMPAT_FLEX_BG) {
-		dgrp_t flex_grp = ext2fs_group_of_blk2(fs, block);
+		dgrp_t flex_grp = ext2fs_group_of_blk(fs, block);
 		printf(" (bg #%u + %u)", flex_grp,
-		       (unsigned)(block-ext2fs_group_first_block2(fs,flex_grp)));
+		       (unsigned)(block-ext2fs_group_first_block(fs,flex_grp)));
 	}
 }
 
 static void list_desc (ext2_filsys fs)
 {
 	unsigned long i;
-	blk64_t	first_block, last_block;
-	blk64_t	super_blk, old_desc_blk, new_desc_blk;
+	blk_t	first_block, last_block;
+	blk_t	super_blk, old_desc_blk, new_desc_blk;
 	char *block_bitmap=NULL, *inode_bitmap=NULL;
-	const char *units = _("blocks");
 	int inode_blocks_per_group, old_desc_blocks, reserved_gdt;
 	int		block_nbytes, inode_nbytes;
 	int has_super;
-	blk64_t		blk_itr = EXT2FS_B2C(fs, fs->super->s_first_data_block);
+	blk_t		blk_itr = fs->super->s_first_data_block;
 	ext2_ino_t	ino_itr = 1;
-	errcode_t	retval;
 
-	if (EXT2_HAS_RO_COMPAT_FEATURE(fs->super,
-				       EXT4_FEATURE_RO_COMPAT_BIGALLOC))
-		units = _("clusters");
-
-	block_nbytes = EXT2_CLUSTERS_PER_GROUP(fs->super) / 8;
+	block_nbytes = EXT2_BLOCKS_PER_GROUP(fs->super) / 8;
 	inode_nbytes = EXT2_INODES_PER_GROUP(fs->super) / 8;
 
 	if (fs->block_map)
@@ -187,26 +173,20 @@ static void list_desc (ext2_filsys fs)
 	else
 		old_desc_blocks = fs->desc_blocks;
 	for (i = 0; i < fs->group_desc_count; i++) {
-		first_block = ext2fs_group_first_block2(fs, i);
-		last_block = ext2fs_group_last_block2(fs, i);
+		first_block = ext2fs_group_first_block(fs, i);
+		last_block = ext2fs_group_last_block(fs, i);
 
-		ext2fs_super_and_bgd_loc2(fs, i, &super_blk,
-					  &old_desc_blk, &new_desc_blk, 0);
+		ext2fs_super_and_bgd_loc(fs, i, &super_blk,
+					 &old_desc_blk, &new_desc_blk, 0);
 
 		printf (_("Group %lu: (Blocks "), i);
 		print_range(first_block, last_block);
 		fputs(")", stdout);
 		print_bg_opts(fs, i);
-		if (fs->super->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM) {
-			unsigned csum = ext2fs_bg_checksum(fs, i);
-			unsigned exp_csum = ext2fs_group_desc_csum(fs, i);
-
-			printf(_("  Checksum 0x%04x"), csum);
-			if (csum != exp_csum)
-				printf(_(" (EXPECTED 0x%04x)"), exp_csum);
-			printf(_(", unused inodes %u\n"),
-			       ext2fs_bg_itable_unused(fs, i));
-		}
+		if (fs->super->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM)
+			printf(_("  Checksum 0x%04x, unused inodes %d\n"),
+			       fs->group_desc[i].bg_checksum,
+			       fs->group_desc[i].bg_itable_unused);
 		has_super = ((i==0) || super_blk);
 		if (has_super) {
 			printf (_("  %s superblock at "),
@@ -214,72 +194,65 @@ static void list_desc (ext2_filsys fs)
 			print_number(super_blk);
 		}
 		if (old_desc_blk) {
-			printf("%s", _(", Group descriptors at "));
+			printf(_(", Group descriptors at "));
 			print_range(old_desc_blk,
 				    old_desc_blk + old_desc_blocks - 1);
 			if (reserved_gdt) {
-				printf("%s", _("\n  Reserved GDT blocks at "));
+				printf(_("\n  Reserved GDT blocks at "));
 				print_range(old_desc_blk + old_desc_blocks,
 					    old_desc_blk + old_desc_blocks +
 					    reserved_gdt - 1);
 			}
 		} else if (new_desc_blk) {
 			fputc(has_super ? ',' : ' ', stdout);
-			printf("%s", _(" Group descriptor at "));
+			printf(_(" Group descriptor at "));
 			print_number(new_desc_blk);
 			has_super++;
 		}
 		if (has_super)
 			fputc('\n', stdout);
 		fputs(_("  Block bitmap at "), stdout);
-		print_number(ext2fs_block_bitmap_loc(fs, i));
-		print_bg_rel_offset(fs, ext2fs_block_bitmap_loc(fs, i), 0,
+		print_number(fs->group_desc[i].bg_block_bitmap);
+		print_bg_rel_offset(fs, fs->group_desc[i].bg_block_bitmap, 0,
 				    first_block, last_block);
+
 		fputs(_(", Inode bitmap at "), stdout);
-		print_number(ext2fs_inode_bitmap_loc(fs, i));
-		print_bg_rel_offset(fs, ext2fs_inode_bitmap_loc(fs, i), 0,
+		print_number(fs->group_desc[i].bg_inode_bitmap);
+		print_bg_rel_offset(fs, fs->group_desc[i].bg_inode_bitmap, 0,
 				    first_block, last_block);
+
 		fputs(_("\n  Inode table at "), stdout);
-		print_range(ext2fs_inode_table_loc(fs, i),
-			    ext2fs_inode_table_loc(fs, i) +
+		print_range(fs->group_desc[i].bg_inode_table,
+			    fs->group_desc[i].bg_inode_table +
 			    inode_blocks_per_group - 1);
-		print_bg_rel_offset(fs, ext2fs_inode_table_loc(fs, i), 1,
+		print_bg_rel_offset(fs, fs->group_desc[i].bg_inode_table, 1,
 				    first_block, last_block);
-		printf (_("\n  %u free %s, %u free inodes, "
+
+		printf (_("\n  %u free blocks, %u free inodes, "
 			  "%u directories%s"),
-			ext2fs_bg_free_blocks_count(fs, i), units,
-			ext2fs_bg_free_inodes_count(fs, i),
-			ext2fs_bg_used_dirs_count(fs, i),
-			ext2fs_bg_itable_unused(fs, i) ? "" : "\n");
-		if (ext2fs_bg_itable_unused(fs, i))
+			fs->group_desc[i].bg_free_blocks_count,
+			fs->group_desc[i].bg_free_inodes_count,
+			fs->group_desc[i].bg_used_dirs_count,
+			fs->group_desc[i].bg_itable_unused ? "" : "\n");
+		if (fs->group_desc[i].bg_itable_unused)
 			printf (_(", %u unused inodes\n"),
-				ext2fs_bg_itable_unused(fs, i));
+				fs->group_desc[i].bg_itable_unused);
 		if (block_bitmap) {
 			fputs(_("  Free blocks: "), stdout);
-			retval = ext2fs_get_block_bitmap_range2(fs->block_map,
+			ext2fs_get_block_bitmap_range(fs->block_map,
 				 blk_itr, block_nbytes << 3, block_bitmap);
-			if (retval)
-				com_err("list_desc", retval,
-					"while reading block bitmap");
-			else
-				print_free(i, block_bitmap,
-					   fs->super->s_clusters_per_group,
-					   fs->super->s_first_data_block,
-					   EXT2FS_CLUSTER_RATIO(fs));
+			print_free (i, block_bitmap,
+				    fs->super->s_blocks_per_group,
+				    fs->super->s_first_data_block);
 			fputc('\n', stdout);
-			blk_itr += fs->super->s_clusters_per_group;
+			blk_itr += fs->super->s_blocks_per_group;
 		}
 		if (inode_bitmap) {
 			fputs(_("  Free inodes: "), stdout);
-			retval = ext2fs_get_inode_bitmap_range2(fs->inode_map,
+			ext2fs_get_inode_bitmap_range(fs->inode_map,
 				 ino_itr, inode_nbytes << 3, inode_bitmap);
-			if (retval)
-				com_err("list_desc", retval,
-					"while reading inode bitmap");
-			else
-				print_free(i, inode_bitmap,
-					   fs->super->s_inodes_per_group,
-					   1, 1);
+			print_free (i, inode_bitmap,
+				    fs->super->s_inodes_per_group, 1);
 			fputc('\n', stdout);
 			ino_itr += fs->super->s_inodes_per_group;
 		}
@@ -306,7 +279,7 @@ static void list_bad_blocks(ext2_filsys fs, int dump)
 	retval = ext2fs_badblocks_list_iterate_begin(bb_list, &bb_iter);
 	if (retval) {
 		com_err("ext2fs_badblocks_list_iterate_begin", retval,
-			"%s", _("while printing bad block list"));
+			_("while printing bad block list"));
 		return;
 	}
 	if (dump) {
@@ -336,34 +309,32 @@ static void print_inline_journal_information(ext2_filsys fs)
 	__u32			*mask_ptr, mask, m;
 	int			i, j, size, printed = 0;
 
-	if (fs->flags & EXT2_FLAG_IMAGE_FILE)
-		return;
 	retval = ext2fs_read_inode(fs, ino,  &inode);
 	if (retval) {
-		com_err(program_name, retval, "%s",
+		com_err(program_name, retval,
 			_("while reading journal inode"));
 		exit(1);
 	}
 	retval = ext2fs_file_open2(fs, ino, &inode, 0, &journal_file);
 	if (retval) {
-		com_err(program_name, retval, "%s",
+		com_err(program_name, retval,
 			_("while opening journal inode"));
 		exit(1);
 	}
 	retval = ext2fs_file_read(journal_file, buf, sizeof(buf), 0);
 	if (retval) {
-		com_err(program_name, retval, "%s",
+		com_err(program_name, retval,
 			_("while reading journal super block"));
 		exit(1);
 	}
 	ext2fs_file_close(journal_file);
 	jsb = (journal_superblock_t *) buf;
 	if (be32_to_cpu(jsb->s_header.h_magic) != JFS_MAGIC_NUMBER) {
-		fprintf(stderr, "%s",
-			_("Journal superblock magic number invalid!\n"));
+		fprintf(stderr,
+			"Journal superblock magic number invalid!\n");
 		exit(1);
 	}
-	printf("%s", _("Journal features:        "));
+	printf(_("Journal features:        "));
 	for (i=0, mask_ptr=&jsb->s_feature_compat; i <3; i++,mask_ptr++) {
 		mask = be32_to_cpu(*mask_ptr);
 		for (j=0,m=1; j < 32; j++, m<<=1) {
@@ -393,9 +364,6 @@ static void print_inline_journal_information(ext2_filsys fs)
 	       (unsigned int)ntohl(jsb->s_maxlen),
 	       (unsigned int)ntohl(jsb->s_sequence),
 	       (unsigned int)ntohl(jsb->s_start));
-	if (jsb->s_errno != 0)
-		printf(_("Journal errno:            %d\n"),
-		       (int) ntohl(jsb->s_errno));
 }
 
 static void print_journal_information(ext2_filsys fs)
@@ -407,10 +375,8 @@ static void print_journal_information(ext2_filsys fs)
 	journal_superblock_t	*jsb;
 
 	/* Get the journal superblock */
-	if ((retval = io_channel_read_blk64(fs->io,
-					    fs->super->s_first_data_block + 1,
-					    -1024, buf))) {
-		com_err(program_name, retval, "%s",
+	if ((retval = io_channel_read_blk(fs->io, fs->super->s_first_data_block+1, -1024, buf))) {
+		com_err(program_name, retval,
 			_("while reading journal superblock"));
 		exit(1);
 	}
@@ -418,7 +384,7 @@ static void print_journal_information(ext2_filsys fs)
 	if ((jsb->s_header.h_magic != (unsigned) ntohl(JFS_MAGIC_NUMBER)) ||
 	    (jsb->s_header.h_blocktype !=
 	     (unsigned) ntohl(JFS_SUPERBLOCK_V2))) {
-		com_err(program_name, 0, "%s",
+		com_err(program_name, 0,
 			_("Couldn't find journal superblock magic numbers"));
 		exit(1);
 	}
@@ -441,7 +407,7 @@ static void print_journal_information(ext2_filsys fs)
 	}
 }
 
-static void parse_extended_opts(const char *opts, blk64_t *superblock,
+static void parse_extended_opts(const char *opts, blk_t *superblock,
 				int *blocksize)
 {
 	char	*buf, *token, *next, *p, *arg, *badopt = 0;
@@ -451,7 +417,7 @@ static void parse_extended_opts(const char *opts, blk64_t *superblock,
 	len = strlen(opts);
 	buf = malloc(len+1);
 	if (!buf) {
-		fprintf(stderr, "%s",
+		fprintf(stderr,
 			_("Couldn't allocate memory to parse options!\n"));
 		exit(1);
 	}
@@ -523,7 +489,7 @@ int main (int argc, char ** argv)
 	errcode_t	retval;
 	ext2_filsys	fs;
 	int		print_badblocks = 0;
-	blk64_t		use_superblock = 0;
+	blk_t		use_superblock = 0;
 	int		use_blocksize = 0;
 	int		image_dump = 0;
 	int		force = 0;
@@ -536,7 +502,6 @@ int main (int argc, char ** argv)
 	setlocale(LC_CTYPE, "");
 	bindtextdomain(NLS_CAT_NAME, LOCALEDIR);
 	textdomain(NLS_CAT_NAME);
-	set_com_err_gettext(gettext);
 #endif
 	add_error_table(&et_ext2_error_table);
 	fprintf (stderr, "dumpe2fs %s (%s)\n", E2FSPROGS_VERSION,
@@ -577,7 +542,7 @@ int main (int argc, char ** argv)
 	if (optind > argc - 1)
 		usage();
 	device_name = argv[optind++];
-	flags = EXT2_FLAG_JOURNAL_DEV_OK | EXT2_FLAG_SOFTSUPP_FEATURES | EXT2_FLAG_64BITS;
+	flags = EXT2_FLAG_JOURNAL_DEV_OK | EXT2_FLAG_SOFTSUPP_FEATURES;
 	if (force)
 		flags |= EXT2_FLAG_FORCE;
 	if (image_dump)
@@ -600,12 +565,9 @@ int main (int argc, char ** argv)
 	if (retval) {
 		com_err (program_name, retval, _("while trying to open %s"),
 			 device_name);
-		printf("%s", _("Couldn't find valid filesystem superblock.\n"));
+		printf (_("Couldn't find valid filesystem superblock.\n"));
 		exit (1);
 	}
-	fs->default_bitmap_type = EXT2FS_BMAP64_RBTREE;
-	if (fs->super->s_feature_incompat & EXT4_FEATURE_INCOMPAT_64BIT)
-		blocks64 = 1;
 	if (print_badblocks) {
 		list_bad_blocks(fs, 1);
 	} else {

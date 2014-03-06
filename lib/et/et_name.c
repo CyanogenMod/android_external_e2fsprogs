@@ -20,7 +20,8 @@ static const char char_set[] =
 
 static char buf[6];
 
-const char * error_table_name(errcode_t num)
+const char * error_table_name(num)
+    errcode_t num;
 {
     int ch;
     int i;

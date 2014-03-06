@@ -76,7 +76,6 @@
  *	@n	invalid
  * 	@o	orphaned
  * 	@p	problem in
- *	@q	quota
  * 	@r	root inode
  * 	@s	should be
  * 	@S	superblock
@@ -132,7 +131,6 @@ static const char *abbrevs[] = {
 	N_("ninvalid"),
 	N_("oorphaned"),
 	N_("pproblem in"),
-	N_("qquota"),
 	N_("rroot @i"),
 	N_("sshould be"),
 	N_("Ssuper@b"),
@@ -153,8 +151,8 @@ static const char *special_inode_name[] =
 	N_("<The NULL inode>"),			/* 0 */
 	N_("<The bad blocks inode>"),		/* 1 */
 	"/",					/* 2 */
-	N_("<The user quota inode>"),		/* 3 */
-	N_("<The group quota inode>"),		/* 4 */
+	N_("<The ACL index inode>"),		/* 3 */
+	N_("<The ACL data inode>"),		/* 4 */
 	N_("<The boot loader inode>"),		/* 5 */
 	N_("<The undelete directory inode>"),	/* 6 */
 	N_("<The group descriptor inode>"),	/* 7 */
@@ -167,7 +165,7 @@ static const char *special_inode_name[] =
  * This function does "safe" printing.  It will convert non-printable
  * ASCII characters using '^' and M- notation.
  */
-static void safe_print(FILE *f, const char *cp, int len)
+static void safe_print(const char *cp, int len)
 {
 	unsigned char	ch;
 
@@ -177,14 +175,14 @@ static void safe_print(FILE *f, const char *cp, int len)
 	while (len--) {
 		ch = *cp++;
 		if (ch > 128) {
-			fputs("M-", f);
+			fputs("M-", stdout);
 			ch -= 128;
 		}
 		if ((ch < 32) || (ch == 0x7f)) {
-			fputc('^', f);
+			fputc('^', stdout);
 			ch ^= 0x40; /* ^@, ^A, ^B; ^? for DEL */
 		}
-		fputc(ch, f);
+		fputc(ch, stdout);
 	}
 }
 
@@ -193,28 +191,26 @@ static void safe_print(FILE *f, const char *cp, int len)
  * This function prints a pathname, using the ext2fs_get_pathname
  * function
  */
-static void print_pathname(FILE *f, ext2_filsys fs, ext2_ino_t dir,
-			   ext2_ino_t ino)
+static void print_pathname(ext2_filsys fs, ext2_ino_t dir, ext2_ino_t ino)
 {
-	errcode_t	retval = 0;
+	errcode_t	retval;
 	char		*path;
 
 	if (!dir && (ino < num_special_inodes)) {
-		fputs(_(special_inode_name[ino]), f);
+		fputs(_(special_inode_name[ino]), stdout);
 		return;
 	}
 
-	if (fs)
-		retval = ext2fs_get_pathname(fs, dir, ino, &path);
-	if (!fs || retval)
-		fputs("???", f);
+	retval = ext2fs_get_pathname(fs, dir, ino, &path);
+	if (retval)
+		fputs("???", stdout);
 	else {
-		safe_print(f, path, -1);
+		safe_print(path, -1);
 		ext2fs_free_mem(&path);
 	}
 }
 
-static void print_time(FILE *f, time_t t)
+static void print_time(time_t t)
 {
 	const char *		time_str;
 	static int		do_gmt = -1;
@@ -229,7 +225,7 @@ static void print_time(FILE *f, time_t t)
 		}
 #endif
 		time_str = asctime((do_gmt > 0) ? gmtime(&t) : localtime(&t));
-		fprintf(f, "%.24s", time_str);
+		printf("%.24s", time_str);
 }
 
 /*
@@ -237,7 +233,7 @@ static void print_time(FILE *f, time_t t)
  * expansion; an @ expression can contain further '@' and '%'
  * expressions.
  */
-static _INLINE_ void expand_at_expression(FILE *f, e2fsck_t ctx, char ch,
+static _INLINE_ void expand_at_expression(e2fsck_t ctx, char ch,
 					  struct problem_context *pctx,
 					  int *first, int recurse)
 {
@@ -252,21 +248,22 @@ static _INLINE_ void expand_at_expression(FILE *f, e2fsck_t ctx, char ch,
 		str = _(*cpp) + 1;
 		if (*first && islower(*str)) {
 			*first = 0;
-			fputc(toupper(*str++), f);
+			fputc(toupper(*str++), stdout);
 		}
-		print_e2fsck_message(f, ctx, str, pctx, *first, recurse+1);
+		print_e2fsck_message(ctx, str, pctx, *first, recurse+1);
 	} else
-		fprintf(f, "@%c", ch);
+		printf("@%c", ch);
 }
 
 /*
  * This function expands '%IX' expressions
  */
-static _INLINE_ void expand_inode_expression(FILE *f, ext2_filsys fs, char ch,
+static _INLINE_ void expand_inode_expression(ext2_filsys fs, char ch,
 					     struct problem_context *ctx)
 {
 	struct ext2_inode	*inode;
 	struct ext2_inode_large	*large_inode;
+	time_t			t;
 
 	if (!ctx || !ctx->inode)
 		goto no_inode;
@@ -277,78 +274,79 @@ static _INLINE_ void expand_inode_expression(FILE *f, ext2_filsys fs, char ch,
 	switch (ch) {
 	case 's':
 		if (LINUX_S_ISDIR(inode->i_mode))
-			fprintf(f, "%u", inode->i_size);
+			printf("%u", inode->i_size);
 		else {
 #ifdef EXT2_NO_64_TYPE
 			if (inode->i_size_high)
-				fprintf(f, "0x%x%08x", inode->i_size_high,
-					inode->i_size);
+				printf("0x%x%08x", inode->i_size_high,
+				       inode->i_size);
 			else
-				fprintf(f, "%u", inode->i_size);
+				printf("%u", inode->i_size);
 #else
-			fprintf(f, "%llu", EXT2_I_SIZE(inode));
+			printf("%llu", inode->i_size |
+				       ((long long)inode->i_size_high << 32));
 #endif
 		}
 		break;
 	case 'S':
-		fprintf(f, "%u", large_inode->i_extra_isize);
+		printf("%u", large_inode->i_extra_isize);
 		break;
 	case 'b':
 		if (fs->super->s_feature_ro_compat &
 		    EXT4_FEATURE_RO_COMPAT_HUGE_FILE) 
-			fprintf(f, "%llu", inode->i_blocks +
-				(((long long) inode->osd2.linux2.l_i_blocks_hi)
-				 << 32));
+			printf("%llu", inode->i_blocks +
+			       (((long long) inode->osd2.linux2.l_i_blocks_hi)
+				<< 32));
 		else
-			fprintf(f, "%u", inode->i_blocks);
+			printf("%u", inode->i_blocks);
 		break;
 	case 'l':
-		fprintf(f, "%d", inode->i_links_count);
+		printf("%d", inode->i_links_count);
 		break;
 	case 'm':
-		fprintf(f, "0%o", inode->i_mode);
+		printf("0%o", inode->i_mode);
 		break;
 	case 'M':
-		print_time(f, inode->i_mtime);
+		print_time(inode->i_mtime);
 		break;
 	case 'F':
-		fprintf(f, "%u", inode->i_faddr);
+		printf("%u", inode->i_faddr);
 		break;
 	case 'f':
-		fprintf(f, "%llu", ext2fs_file_acl_block(fs, inode));
+		printf("%u", inode->i_file_acl);
 		break;
 	case 'd':
-		fprintf(f, "%u", (LINUX_S_ISDIR(inode->i_mode) ?
-				  inode->i_dir_acl : 0));
+		printf("%u", (LINUX_S_ISDIR(inode->i_mode) ?
+			      inode->i_dir_acl : 0));
 		break;
 	case 'u':
-		fprintf(f, "%d", inode_uid(*inode));
+		printf("%d", inode_uid(*inode));
 		break;
 	case 'g':
-		fprintf(f, "%d", inode_gid(*inode));
+		printf("%d", inode_gid(*inode));
 		break;
 	case 't':
 		if (LINUX_S_ISREG(inode->i_mode))
-			fputs(_("regular file"), f);
+			printf(_("regular file"));
 		else if (LINUX_S_ISDIR(inode->i_mode))
-			fputs(_("directory"), f);
+			printf(_("directory"));
 		else if (LINUX_S_ISCHR(inode->i_mode))
-			fputs(_("character device"), f);
+			printf(_("character device"));
 		else if (LINUX_S_ISBLK(inode->i_mode))
-			fputs(_("block device"), f);
+			printf(_("block device"));
 		else if (LINUX_S_ISFIFO(inode->i_mode))
-			fputs(_("named pipe"), f);
+			printf(_("named pipe"));
 		else if (LINUX_S_ISLNK(inode->i_mode))
-			fputs(_("symbolic link"), f);
+			printf(_("symbolic link"));
 		else if (LINUX_S_ISSOCK(inode->i_mode))
-			fputs(_("socket"), f);
+			printf(_("socket"));
 		else
-			fprintf(f, _("unknown file type with mode 0%o"),
-				inode->i_mode);
+			printf(_("unknown file type with mode 0%o"),
+			       inode->i_mode);
 		break;
 	default:
 	no_inode:
-		fprintf(f, "%%I%c", ch);
+		printf("%%I%c", ch);
 		break;
 	}
 }
@@ -356,11 +354,12 @@ static _INLINE_ void expand_inode_expression(FILE *f, ext2_filsys fs, char ch,
 /*
  * This function expands '%dX' expressions
  */
-static _INLINE_ void expand_dirent_expression(FILE *f, ext2_filsys fs, char ch,
+static _INLINE_ void expand_dirent_expression(ext2_filsys fs, char ch,
 					      struct problem_context *ctx)
 {
 	struct ext2_dir_entry	*dirent;
-	unsigned int rec_len, len;
+	unsigned int rec_len;
+	int	len;
 
 	if (!ctx || !ctx->dirent)
 		goto no_dirent;
@@ -369,34 +368,36 @@ static _INLINE_ void expand_dirent_expression(FILE *f, ext2_filsys fs, char ch,
 
 	switch (ch) {
 	case 'i':
-		fprintf(f, "%u", dirent->inode);
+		printf("%u", dirent->inode);
 		break;
 	case 'n':
 		len = dirent->name_len & 0xFF;
+		if (len > EXT2_NAME_LEN)
+			len = EXT2_NAME_LEN;
 		if ((ext2fs_get_rec_len(fs, dirent, &rec_len) == 0) &&
 		    (len > rec_len))
 			len = rec_len;
-		safe_print(f, dirent->name, len);
+		safe_print(dirent->name, len);
 		break;
 	case 'r':
 		(void) ext2fs_get_rec_len(fs, dirent, &rec_len);
-		fprintf(f, "%u", rec_len);
+		printf("%u", rec_len);
 		break;
 	case 'l':
-		fprintf(f, "%u", dirent->name_len & 0xFF);
+		printf("%u", dirent->name_len & 0xFF);
 		break;
 	case 't':
-		fprintf(f, "%u", dirent->name_len >> 8);
+		printf("%u", dirent->name_len >> 8);
 		break;
 	default:
 	no_dirent:
-		fprintf(f, "%%D%c", ch);
+		printf("%%D%c", ch);
 		break;
 	}
 }
 
-static _INLINE_ void expand_percent_expression(FILE *f, ext2_filsys fs,
-					       char ch, int width, int *first,
+static _INLINE_ void expand_percent_expression(ext2_filsys fs, char ch,
+					       int *first,
 					       struct problem_context *ctx)
 {
 	e2fsck_t e2fsck_ctx = fs ? (e2fsck_t) fs->priv_data : NULL;
@@ -407,13 +408,13 @@ static _INLINE_ void expand_percent_expression(FILE *f, ext2_filsys fs,
 
 	switch (ch) {
 	case '%':
-		fputc('%', f);
+		fputc('%', stdout);
 		break;
 	case 'b':
 #ifdef EXT2_NO_64_TYPE
-		fprintf(f, "%*u", width, (unsigned long) ctx->blk);
+		printf("%u", (unsigned long) ctx->blk);
 #else
-		fprintf(f, "%*llu", width, (unsigned long long) ctx->blk);
+		printf("%llu", (unsigned long long) ctx->blk);
 #endif
 		break;
 	case 'B':
@@ -428,133 +429,118 @@ static _INLINE_ void expand_percent_expression(FILE *f, ext2_filsys fs,
 		else
 			m = _("block #");
 		if (*first && islower(m[0]))
-			fputc(toupper(*m++), f);
-		fputs(m, f);
+			fputc(toupper(*m++), stdout);
+		fputs(m, stdout);
 		if (ctx->blkcount >= 0) {
 #ifdef EXT2_NO_64_TYPE
-			fprintf(f, "%d", ctx->blkcount);
+			printf("%d", ctx->blkcount);
 #else
-			fprintf(f, "%lld", (long long) ctx->blkcount);
+			printf("%lld", (long long) ctx->blkcount);
 #endif
 		}
 		break;
 	case 'c':
 #ifdef EXT2_NO_64_TYPE
-		fprintf(f, "%*u", width, (unsigned long) ctx->blk2);
+		printf("%u", (unsigned long) ctx->blk2);
 #else
-		fprintf(f, "%*llu", width, (unsigned long long) ctx->blk2);
+		printf("%llu", (unsigned long long) ctx->blk2);
 #endif
 		break;
 	case 'd':
-		fprintf(f, "%*u", width, ctx->dir);
+		printf("%u", ctx->dir);
 		break;
 	case 'g':
-		fprintf(f, "%*u", width, ctx->group);
+		printf("%d", ctx->group);
 		break;
 	case 'i':
-		fprintf(f, "%*u", width, ctx->ino);
+		printf("%u", ctx->ino);
 		break;
 	case 'j':
-		fprintf(f, "%*u", width, ctx->ino2);
+		printf("%u", ctx->ino2);
 		break;
 	case 'm':
-		fprintf(f, "%*s", width, error_message(ctx->errcode));
+		printf("%s", error_message(ctx->errcode));
 		break;
 	case 'N':
 #ifdef EXT2_NO_64_TYPE
-		fprintf(f, "%*u", width, ctx->num);
+		printf("%u", ctx->num);
 #else
-		fprintf(f, "%*llu", width, (long long)ctx->num);
+		printf("%llu", (long long)ctx->num);
 #endif
 		break;
 	case 'p':
-		print_pathname(f, fs, ctx->ino, 0);
+		print_pathname(fs, ctx->ino, 0);
 		break;
 	case 'P':
-		print_pathname(f, fs, ctx->ino2,
+		print_pathname(fs, ctx->ino2,
 			       ctx->dirent ? ctx->dirent->inode : 0);
 		break;
 	case 'q':
-		print_pathname(f, fs, ctx->dir, 0);
+		print_pathname(fs, ctx->dir, 0);
 		break;
 	case 'Q':
-		print_pathname(f, fs, ctx->dir, ctx->ino);
+		print_pathname(fs, ctx->dir, ctx->ino);
 		break;
 	case 'r':
 #ifdef EXT2_NO_64_TYPE
-		fprintf(f, "%*d", width, ctx->blkcount);
+		printf("%d", ctx->blkcount);
 #else
-		fprintf(f, "%*lld", width, (long long) ctx->blkcount);
+		printf("%lld", (long long) ctx->blkcount);
 #endif
 		break;
 	case 'S':
-		fprintf(f, "%llu", get_backup_sb(NULL, fs, NULL, NULL));
+		printf("%u", get_backup_sb(NULL, fs, NULL, NULL));
 		break;
 	case 's':
-		fprintf(f, "%*s", width, ctx->str ? ctx->str : "NULL");
+		printf("%s", ctx->str ? ctx->str : "NULL");
 		break;
 	case 't':
-		print_time(f, (time_t) ctx->num);
+		print_time((time_t) ctx->num);
 		break;
 	case 'T':
-		print_time(f, e2fsck_ctx ? e2fsck_ctx->now : time(0));
-		break;
-	case 'x':
-		fprintf(f, "0x%0*x", width, ctx->csum1);
+		print_time(e2fsck_ctx ? e2fsck_ctx->now : time(0));
 		break;
 	case 'X':
 #ifdef EXT2_NO_64_TYPE
-		fprintf(f, "0x%0*x", width, ctx->num);
+		printf("0x%x", ctx->num);
 #else
-		fprintf(f, "0x%0*llx", width, (long long)ctx->num);
+		printf("0x%llx", (long long)ctx->num);
 #endif
-		break;
-	case 'y':
-		fprintf(f, "0x%0*x", width, ctx->csum2);
 		break;
 	default:
 	no_context:
-		fprintf(f, "%%%c", ch);
+		printf("%%%c", ch);
 		break;
 	}
 }
 
-void print_e2fsck_message(FILE *f, e2fsck_t ctx, const char *msg,
+void print_e2fsck_message(e2fsck_t ctx, const char *msg,
 			  struct problem_context *pctx, int first,
 			  int recurse)
 {
 	ext2_filsys fs = ctx->fs;
 	const char *	cp;
-	int		i, width;
+	int		i;
 
 	e2fsck_clear_progbar(ctx);
 	for (cp = msg; *cp; cp++) {
 		if (cp[0] == '@') {
 			cp++;
-			expand_at_expression(f, ctx, *cp, pctx, &first,
-					     recurse);
-		} else if (cp[0] == '%') {
+			expand_at_expression(ctx, *cp, pctx, &first, recurse);
+		} else if (cp[0] == '%' && cp[1] == 'I') {
+			cp += 2;
+			expand_inode_expression(fs, *cp, pctx);
+		} else if (cp[0] == '%' && cp[1] == 'D') {
+			cp += 2;
+			expand_dirent_expression(fs, *cp, pctx);
+		} else if ((cp[0] == '%')) {
 			cp++;
-			width = 0;
-			while (isdigit(cp[0])) {
-				width = (width * 10) + cp[0] - '0';
-				cp++;
-			}
-			if (cp[0] == 'I') {
-				cp++;
-				expand_inode_expression(f, fs, *cp, pctx);
-			} else if (cp[0] == 'D') {
-				cp++;
-				expand_dirent_expression(f, fs, *cp, pctx);
-			} else {
-				expand_percent_expression(f, fs, *cp, width,
-							  &first, pctx);
-			}
+			expand_percent_expression(fs, *cp, &first, pctx);
 		} else {
 			for (i=0; cp[i]; i++)
 				if ((cp[i] == '@') || cp[i] == '%')
 					break;
-			fprintf(f, "%.*s", i, cp);
+			printf("%.*s", i, cp);
 			cp += i-1;
 		}
 		first = 0;

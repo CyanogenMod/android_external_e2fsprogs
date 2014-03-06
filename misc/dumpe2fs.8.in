@@ -23,9 +23,10 @@ prints the super block and blocks group information for the filesystem
 present on
 .I device.
 .PP
-.B Note:
-When used with a mounted filesystem, the printed
-information may be old or inconsistent.
+.B dumpe2fs
+is similar to Berkeley's
+.B dumpfs
+program for the BSD Fast File System.
 .SH OPTIONS
 .TP
 .B \-b
@@ -82,6 +83,5 @@ http://e2fsprogs.sourceforge.net.
 .SH SEE ALSO
 .BR e2fsck (8),
 .BR mke2fs (8),
-.BR tune2fs (8).
-.BR ext4 (5)
+.BR tune2fs (8)
 

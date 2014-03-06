@@ -48,7 +48,6 @@ mke2fs_shared_libraries := \
 	libext2_blkid \
 	libext2_uuid \
 	libext2_profile \
-	libext2_quota \
 	libext2_com_err \
 	libext2_e2p
 
@@ -126,7 +125,6 @@ tune2fs_shared_libraries := \
 	libext2fs \
 	libext2_com_err \
 	libext2_blkid \
-	libext2_quota \
 	libext2_uuid \
 	libext2_e2p
 

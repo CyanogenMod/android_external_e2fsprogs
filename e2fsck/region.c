@@ -170,9 +170,9 @@ void region_print(region_t region, FILE *f)
 
 int main(int argc, char **argv)
 {
-	region_t	r = NULL;
+	region_t	r;
 	int		pc = 0, ret;
-	region_addr_t	start, end;
+	region_addr_t	start, end, len;
 
 
 	while (1) {

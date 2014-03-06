@@ -44,12 +44,11 @@ int ext2fs_reserve_super_and_bgd(ext2_filsys fs,
 				 dgrp_t group,
 				 ext2fs_block_bitmap bmap)
 {
-	blk64_t	super_blk, old_desc_blk, new_desc_blk;
-	blk_t	used_blks;
-	int	old_desc_blocks, num_blocks;
+	blk_t	super_blk, old_desc_blk, new_desc_blk;
+	int	j, old_desc_blocks, num_blocks;
 
-	ext2fs_super_and_bgd_loc2(fs, group, &super_blk,
-				  &old_desc_blk, &new_desc_blk, &used_blks);
+	num_blocks = ext2fs_super_and_bgd_loc(fs, group, &super_blk,
+					      &old_desc_blk, &new_desc_blk, 0);
 
 	if (fs->super->s_feature_incompat & EXT2_FEATURE_INCOMPAT_META_BG)
 		old_desc_blocks = fs->super->s_first_meta_bg;
@@ -58,25 +57,18 @@ int ext2fs_reserve_super_and_bgd(ext2_filsys fs,
 			fs->desc_blocks + fs->super->s_reserved_gdt_blocks;
 
 	if (super_blk || (group == 0))
-		ext2fs_mark_block_bitmap2(bmap, super_blk);
-	if ((group == 0) && (fs->blocksize == 1024) &&
-	    EXT2FS_CLUSTER_RATIO(fs) > 1)
-		ext2fs_mark_block_bitmap2(bmap, 0);
+		ext2fs_mark_block_bitmap(bmap, super_blk);
 
 	if (old_desc_blk) {
 		if (fs->super->s_reserved_gdt_blocks && fs->block_map == bmap)
-			ext2fs_bg_flags_clear(fs, group, EXT2_BG_BLOCK_UNINIT);
-		num_blocks = old_desc_blocks;
-		if (old_desc_blk + num_blocks >= ext2fs_blocks_count(fs->super))
-			num_blocks = ext2fs_blocks_count(fs->super) -
-				old_desc_blk;
-		ext2fs_mark_block_bitmap_range2(bmap, old_desc_blk, num_blocks);
+			fs->group_desc[group].bg_flags &= ~EXT2_BG_BLOCK_UNINIT;
+		for (j=0; j < old_desc_blocks; j++)
+			if (old_desc_blk + j < fs->super->s_blocks_count)
+				ext2fs_mark_block_bitmap(bmap,
+							 old_desc_blk + j);
 	}
 	if (new_desc_blk)
-		ext2fs_mark_block_bitmap2(bmap, new_desc_blk);
+		ext2fs_mark_block_bitmap(bmap, new_desc_blk);
 
-	num_blocks = ext2fs_group_blocks_count(fs, group);
-	num_blocks -= 2 + fs->inode_blocks_per_group + used_blks;
-
-	return num_blocks  ;
+	return num_blocks;
 }

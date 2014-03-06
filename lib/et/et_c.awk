@@ -129,8 +129,6 @@ c2n["_"]=63
 	print "" > outfile
 	print "#include <stdlib.h>" > outfile
 	print "" > outfile
-	print "#define N_(a) a" > outfile
-	print "" > outfile
 	print "static const char * const text[] = {" > outfile
 	table_item_count = 0
 }
@@ -143,7 +141,7 @@ c2n["_"]=63
 
 (continuation == 1) && ($0 ~ /"[ \t]*$/) {
 #	printf "\t\t\"%s,\n", $0 > outfile
-	printf "\tN_(%s),\n", cont_buf $0 > outfile
+	printf "\t%s,\n", cont_buf $0 > outfile
 	continuation = 0;
 }
 
@@ -164,7 +162,7 @@ c2n["_"]=63
 	    text = text FS $i
 	}
 	text=substr(text,2,length(text)-1);
-	printf "\tN_(%s),\n", text > outfile
+	printf "\t%s,\n", text > outfile
 	table_item_count++
 }
 
@@ -192,7 +190,7 @@ c2n["_"]=63
 
 { 
 	if (skipone) {
-	    printf "\tN_(%s),\n", $0 > outfile
+	    printf "\t%s,\n", $0 > outfile
 	}
 	skipone=0
 }
@@ -208,7 +206,7 @@ c2n["_"]=63
 /^[ \t]*(index)[ \t]+[A-Z_0-9]+/ {
 	new_idx = $2
 	for (i = table_item_count ; i < new_idx; i++) {
-		printf "\tN_(\"Reserved %s error (%d)\"),\n", \
+		printf "\t\"Reserved %s error (%d)\",\n", \
 			table_name, table_item_count++ > outfile
 	}
 }

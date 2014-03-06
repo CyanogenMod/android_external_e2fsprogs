@@ -29,30 +29,22 @@
 #define STATIC static
 #endif
 
-__u16 ext2fs_group_desc_csum(ext2_filsys fs, dgrp_t group)
+STATIC __u16 ext2fs_group_desc_csum(ext2_filsys fs, dgrp_t group)
 {
-	struct ext2_group_desc *desc = ext2fs_group_desc(fs, fs->group_desc,
-							 group);
-	size_t size = EXT2_DESC_SIZE(fs->super);
-	size_t offset;
-	__u16 crc;
+	__u16 crc = 0;
+	struct ext2_group_desc *desc;
+
+	desc = &fs->group_desc[group];
 
 	if (fs->super->s_feature_ro_compat & EXT4_FEATURE_RO_COMPAT_GDT_CSUM) {
-		size_t offset = offsetof(struct ext2_group_desc, bg_checksum);
+		int offset = offsetof(struct ext2_group_desc, bg_checksum);
 
 #ifdef WORDS_BIGENDIAN
-		struct ext4_group_desc swabdesc;
-		size_t save_size = size;
-		const size_t ext4_bg_size = sizeof(struct ext4_group_desc);
-		struct ext2_group_desc *save_desc = desc;
+		struct ext2_group_desc swabdesc = *desc;
 
 		/* Have to swab back to little-endian to do the checksum */
-		if (size > ext4_bg_size)
-			size = ext4_bg_size;
-		memcpy(&swabdesc, desc, size);
-		ext2fs_swap_group_desc2(fs,
-					(struct ext2_group_desc *) &swabdesc);
-		desc = (struct ext2_group_desc *) &swabdesc;
+		ext2fs_swap_group_desc(&swabdesc);
+		desc = &swabdesc;
 
 		group = ext2fs_swab32(group);
 #endif
@@ -61,22 +53,12 @@ __u16 ext2fs_group_desc_csum(ext2_filsys fs, dgrp_t group)
 		crc = ext2fs_crc16(crc, &group, sizeof(group));
 		crc = ext2fs_crc16(crc, desc, offset);
 		offset += sizeof(desc->bg_checksum); /* skip checksum */
+		assert(offset == sizeof(*desc));
 		/* for checksum of struct ext4_group_desc do the rest...*/
-		if (offset < size) {
+		if (offset < fs->super->s_desc_size) {
 			crc = ext2fs_crc16(crc, (char *)desc + offset,
-					   size - offset);
+				    fs->super->s_desc_size - offset);
 		}
-#ifdef WORDS_BIGENDIAN
-		/*
-		 * If the size of the bg descriptor is greater than 64
-		 * bytes, which is the size of the traditional ext4 bg
-		 * descriptor, checksum the rest of the descriptor here
-		 */
-		if (save_size > ext4_bg_size)
-			crc = ext2fs_crc16(crc,
-					   (char *)save_desc + ext4_bg_size,
-					   save_size - ext4_bg_size);
-#endif
 	}
 
 	return crc;
@@ -86,7 +68,7 @@ int ext2fs_group_desc_csum_verify(ext2_filsys fs, dgrp_t group)
 {
 	if (EXT2_HAS_RO_COMPAT_FEATURE(fs->super,
 				       EXT4_FEATURE_RO_COMPAT_GDT_CSUM) &&
-	    (ext2fs_bg_checksum(fs, group) !=
+	    (fs->group_desc[group].bg_checksum !=
 	     ext2fs_group_desc_csum(fs, group)))
 		return 0;
 
@@ -95,13 +77,10 @@ int ext2fs_group_desc_csum_verify(ext2_filsys fs, dgrp_t group)
 
 void ext2fs_group_desc_csum_set(ext2_filsys fs, dgrp_t group)
 {
-	if (!EXT2_HAS_RO_COMPAT_FEATURE(fs->super,
-					EXT4_FEATURE_RO_COMPAT_GDT_CSUM))
-		return;
-
-	/* ext2fs_bg_checksum_set() sets the actual checksum field but
-	 * does not calculate the checksum itself. */
-	ext2fs_bg_checksum_set(fs, group, ext2fs_group_desc_csum(fs, group));
+	if (EXT2_HAS_RO_COMPAT_FEATURE(fs->super,
+				       EXT4_FEATURE_RO_COMPAT_GDT_CSUM))
+		fs->group_desc[group].bg_checksum =
+			ext2fs_group_desc_csum(fs, group);
 }
 
 static __u32 find_last_inode_ingrp(ext2fs_inode_bitmap bitmap,
@@ -113,7 +92,7 @@ static __u32 find_last_inode_ingrp(ext2fs_inode_bitmap bitmap,
 	end_ino = start_ino + inodes_per_grp - 1;
 
 	for (i = end_ino; i >= start_ino; i--) {
-		if (ext2fs_fast_test_inode_bitmap2(bitmap, i))
+		if (ext2fs_fast_test_inode_bitmap(bitmap, i))
 			return i - start_ino + 1;
 	}
 	return inodes_per_grp;
@@ -124,6 +103,7 @@ static __u32 find_last_inode_ingrp(ext2fs_inode_bitmap bitmap,
 errcode_t ext2fs_set_gdt_csum(ext2_filsys fs)
 {
 	struct ext2_super_block *sb = fs->super;
+	struct ext2_group_desc *bg = fs->group_desc;
 	int dirty = 0;
 	dgrp_t i;
 
@@ -134,31 +114,27 @@ errcode_t ext2fs_set_gdt_csum(ext2_filsys fs)
 					EXT4_FEATURE_RO_COMPAT_GDT_CSUM))
 		return 0;
 
-	for (i = 0; i < fs->group_desc_count; i++) {
-		__u32 old_csum = ext2fs_bg_checksum(fs, i);
-		__u32 old_unused = ext2fs_bg_itable_unused(fs, i);
-		__u32 old_flags = ext2fs_bg_flags(fs, i);
-		__u32 old_free_inodes_count = ext2fs_bg_free_inodes_count(fs, i);
+	for (i = 0; i < fs->group_desc_count; i++, bg++) {
+		int old_csum = bg->bg_checksum;
+		int old_unused = bg->bg_itable_unused;
+		int old_flags = bg->bg_flags;
 
-		if (old_free_inodes_count == sb->s_inodes_per_group) {
-			ext2fs_bg_flags_set(fs, i, EXT2_BG_INODE_UNINIT);
-			ext2fs_bg_itable_unused_set(fs, i, sb->s_inodes_per_group);
+		if (bg->bg_free_inodes_count == sb->s_inodes_per_group) {
+			bg->bg_flags |= EXT2_BG_INODE_UNINIT;
+			bg->bg_itable_unused = sb->s_inodes_per_group;
 		} else {
-			int unused =
-				sb->s_inodes_per_group -
+			bg->bg_flags &= ~EXT2_BG_INODE_UNINIT;
+			bg->bg_itable_unused = sb->s_inodes_per_group -
 				find_last_inode_ingrp(fs->inode_map,
-						      sb->s_inodes_per_group, i);
-
-			ext2fs_bg_flags_clear(fs, i, EXT2_BG_INODE_UNINIT);
-			ext2fs_bg_itable_unused_set(fs, i, unused);
+						      sb->s_inodes_per_group,i);
 		}
 
 		ext2fs_group_desc_csum_set(fs, i);
-		if (old_flags != ext2fs_bg_flags(fs, i))
+		if (old_flags != bg->bg_flags)
 			dirty = 1;
-		if (old_unused != ext2fs_bg_itable_unused(fs, i))
+		if (old_unused != bg->bg_itable_unused)
 			dirty = 1;
-		if (old_csum != ext2fs_bg_checksum(fs, i))
+		if (old_csum != bg->bg_checksum)
 			dirty = 1;
 	}
 	if (dirty)
@@ -173,25 +149,15 @@ void print_csum(const char *msg, ext2_filsys fs, dgrp_t group)
 {
 	__u16 crc1, crc2, crc3;
 	dgrp_t swabgroup;
-	struct ext2_group_desc *desc = ext2fs_group_desc(fs, fs->group_desc,
-							 group);
-	size_t size = EXT2_DESC_SIZE(fs->super);
+	struct ext2_group_desc *desc = &fs->group_desc[group];
 	struct ext2_super_block *sb = fs->super;
-	int offset = offsetof(struct ext2_group_desc, bg_checksum);
-#ifdef WORDS_BIGENDIAN
-	struct ext4_group_desc swabdesc;
-	struct ext2_group_desc *save_desc = desc;
-	const size_t ext4_bg_size = sizeof(struct ext4_group_desc);
-	size_t save_size = size;
-#endif
 
 #ifdef WORDS_BIGENDIAN
+	struct ext2_group_desc swabdesc = fs->group_desc[group];
+
 	/* Have to swab back to little-endian to do the checksum */
-	if (size > ext4_bg_size)
-		size = ext4_bg_size;
-	memcpy(&swabdesc, desc, size);
-	ext2fs_swap_group_desc2(fs, (struct ext2_group_desc *) &swabdesc);
-	desc = (struct ext2_group_desc *) &swabdesc;
+	ext2fs_swap_group_desc(&swabdesc);
+	desc = &swabdesc;
 
 	swabgroup = ext2fs_swab32(group);
 #else
@@ -200,19 +166,10 @@ void print_csum(const char *msg, ext2_filsys fs, dgrp_t group)
 
 	crc1 = ext2fs_crc16(~0, sb->s_uuid, sizeof(fs->super->s_uuid));
 	crc2 = ext2fs_crc16(crc1, &swabgroup, sizeof(swabgroup));
-	crc3 = ext2fs_crc16(crc2, desc, offset);
-	offset += sizeof(desc->bg_checksum); /* skip checksum */
-	/* for checksum of struct ext4_group_desc do the rest...*/
-	if (offset < size)
-		crc3 = ext2fs_crc16(crc3, (char *)desc + offset, size - offset);
-#ifdef WORDS_BIGENDIAN
-	if (save_size > ext4_bg_size)
-		crc3 = ext2fs_crc16(crc3, (char *)save_desc + ext4_bg_size,
-				    save_size - ext4_bg_size);
-#endif
-
-	printf("%s UUID %s=%04x, grp %u=%04x: %04x=%04x\n",
-	       msg, e2p_uuid2str(sb->s_uuid), crc1, group, crc2, crc3,
+	crc3 = ext2fs_crc16(crc2, desc,
+			    offsetof(struct ext2_group_desc, bg_checksum));
+	printf("%s: UUID %s(%04x), grp %u(%04x): %04x=%04x\n",
+	       msg, e2p_uuid2str(sb->s_uuid), crc1, group, crc2,crc3,
 	       ext2fs_group_desc_csum(fs, group));
 }
 
@@ -228,14 +185,9 @@ int main(int argc, char **argv)
 	__u16 csum1, csum2, csum_known = 0xd3a4;
 
 	memset(&param, 0, sizeof(param));
-	ext2fs_blocks_count_set(&param, 32768);
-#if 0
-	param.s_feature_incompat |= EXT4_FEATURE_INCOMPAT_64BIT;
-	param.s_desc_size = 128;
-	csum_known = 0x5b6e;
-#endif
+	param.s_blocks_count = 32768;
 
-	retval = ext2fs_initialize("test fs", EXT2_FLAG_64BITS, &param,
+	retval = ext2fs_initialize("test fs", 0, &param,
 				   test_io_manager, &fs);
 	if (retval) {
 		com_err("setup", retval,
@@ -246,13 +198,13 @@ int main(int argc, char **argv)
 	fs->super->s_feature_ro_compat = EXT4_FEATURE_RO_COMPAT_GDT_CSUM;
 
 	for (i=0; i < fs->group_desc_count; i++) {
-		ext2fs_block_bitmap_loc_set(fs, i, 124);
-		ext2fs_inode_bitmap_loc_set(fs, i, 125);
-		ext2fs_inode_table_loc_set(fs, i, 126);
-		ext2fs_bg_free_blocks_count_set(fs, i, 31119);
-		ext2fs_bg_free_inodes_count_set(fs, i, 15701);
-		ext2fs_bg_used_dirs_count_set(fs, i, 2);
-		ext2fs_bg_flags_zap(fs, i);
+		fs->group_desc[i].bg_block_bitmap = 124;
+		fs->group_desc[i].bg_inode_bitmap = 125;
+		fs->group_desc[i].bg_inode_table = 126;
+		fs->group_desc[i].bg_free_blocks_count = 31119;
+		fs->group_desc[i].bg_free_inodes_count = 15701;
+		fs->group_desc[i].bg_used_dirs_count = 2;
+		fs->group_desc[i].bg_flags = 0;
 	};
 
 	csum1 = ext2fs_group_desc_csum(fs, 0);
@@ -274,7 +226,7 @@ int main(int argc, char **argv)
 		printf("checksums for different groups shouldn't match\n");
 		exit(1);
 	}
-	ext2fs_bg_checksum_set(fs, 0, csum1);
+	fs->group_desc[0].bg_checksum = csum1;
 	csum2 = ext2fs_group_desc_csum(fs, 0);
 	print_csum("csum_set", fs, 0);
 	if (csum1 != csum2) {
@@ -291,10 +243,9 @@ int main(int argc, char **argv)
 		printf("checksums for different filesystems shouldn't match\n");
 		exit(1);
 	}
-	csum1 = ext2fs_group_desc_csum(fs, 0);
-	ext2fs_bg_checksum_set(fs, 0, csum1);
+	csum1 = fs->group_desc[0].bg_checksum = ext2fs_group_desc_csum(fs, 0);
 	print_csum("csum_new", fs, 0);
-	ext2fs_bg_free_blocks_count_set(fs, 0, 1);
+	fs->group_desc[0].bg_free_blocks_count = 1;
 	csum2 = ext2fs_group_desc_csum(fs, 0);
 	print_csum("csum_blk", fs, 0);
 	if (csum1 == csum2) {

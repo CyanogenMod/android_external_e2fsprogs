@@ -1,1 +1,1 @@
-inode counting structure optimized for low counts
+inode counting abstraction optimized for storing inode counts

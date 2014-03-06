@@ -107,10 +107,12 @@ typedef int bool;
 
 #include "tdb.h"
 
-static TDB_DATA tdb_null;
-
 #ifndef u32
 #define u32 unsigned
+#endif
+
+#ifndef HAVE_GETPAGESIZE
+#define getpagesize() 0x2000
 #endif
 
 typedef u32 tdb_len_t;
@@ -1747,7 +1749,7 @@ static int transaction_sync(struct tdb_context *tdb, tdb_off_t offset, tdb_len_t
 		TDB_LOG((tdb, TDB_DEBUG_FATAL, "tdb_transaction: fsync failed\n"));
 		return -1;
 	}
-#if defined(HAVE_MSYNC) && defined(MS_SYNC)
+#ifdef MS_SYNC
 	if (tdb->map_ptr) {
 		tdb_off_t moffset = offset & ~(tdb->page_size-1);
 		if (msync(moffset + (char *)tdb->map_ptr,
@@ -3055,6 +3057,8 @@ int tdb_printfreelist(struct tdb_context *tdb)
 
 /* file: tdb.c */
 
+TDB_DATA tdb_null;
+
 /*
   non-blocking increment of the tdb sequence number if the tdb has been opened using
   the TDB_SEQNUM flag
@@ -3706,17 +3710,17 @@ void tdb_enable_seqnum(struct tdb_context *tdb)
 static struct tdb_context *tdbs = NULL;
 
 
-/* This is from a hash algorithm suggested by Rogier Wolff */
+/* This is based on the hash algorithm from gdbm */
 static unsigned int default_tdb_hash(TDB_DATA *key)
 {
 	u32 value;	/* Used to compute the hash value.  */
 	u32   i;	/* Used to cycle through random values. */
 
 	/* Set the initial value from the key size. */
-	for (value = 0, i=0; i < key->dsize; i++)
-		value = value * 256 + key->dptr[i] + (value >> 24) * 241;
+	for (value = 0x238F13AF * key->dsize, i=0; i < key->dsize; i++)
+		value = (value + (key->dptr[i] << (i*5 % 24)));
 
-	return value;
+	return (1103515243 * value + 12345);
 }
 
 
@@ -3834,7 +3838,7 @@ struct tdb_context *tdb_open_ex(const char *name, int hash_size, int tdb_flags,
 	tdb->hash_fn = hash_fn ? hash_fn : default_tdb_hash;
 
 	/* cache the page size */
-	tdb->page_size = sysconf(_SC_PAGESIZE);
+	tdb->page_size = getpagesize();
 	if (tdb->page_size <= 0) {
 		tdb->page_size = 0x2000;
 	}
