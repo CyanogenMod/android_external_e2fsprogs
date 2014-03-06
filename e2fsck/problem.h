@@ -10,8 +10,6 @@
  */
 
 #include <stdint.h>
-typedef uint32_t __u32;
-typedef long errcode_t;
 typedef __u32 problem_t;
 
 struct problem_context {
