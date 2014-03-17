@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -35,6 +36,85 @@
 #include "blkidP.h"
 #include "uuid/uuid.h"
 #include "probe.h"
+
+/*
+ * Fallbacks
+ */
+#ifndef bswap_16
+# define bswap_16(x)   ((((x) & 0x00FF) << 8) | \
+			(((x) & 0xFF00) >> 8))
+#endif
+
+#ifndef bswap_32
+# define bswap_32(x)   ((((x) & 0x000000FF) << 24) | \
+			(((x) & 0x0000FF00) << 8)  | \
+			(((x) & 0x00FF0000) >> 8)  | \
+			(((x) & 0xFF000000) >> 24))
+#endif
+
+#ifndef bswap_64
+# define bswap_64(x) ((((x) & 0x00000000000000FFULL) << 56) | \
+                      (((x) & 0x000000000000FF00ULL) << 40) | \
+                      (((x) & 0x0000000000FF0000ULL) << 24) | \
+                      (((x) & 0x00000000FF000000ULL) << 8)  | \
+                      (((x) & 0x000000FF00000000ULL) >> 8)  | \
+                      (((x) & 0x0000FF0000000000ULL) >> 24) | \
+                      (((x) & 0x00FF000000000000ULL) >> 40) | \
+                      (((x) & 0xFF00000000000000ULL) >> 56))
+#endif
+
+#ifndef htobe16
+# if !defined(WORDS_BIGENDIAN)
+#  define htobe16(x) bswap_16 (x)
+#  define htole16(x) (x)
+#  define be16toh(x) bswap_16 (x)
+#  define le16toh(x) (x)
+#  define htobe32(x) bswap_32 (x)
+#  define htole32(x) (x)
+#  define be32toh(x) bswap_32 (x)
+#  define le32toh(x) (x)
+#  define htobe64(x) bswap_64 (x)
+#  define htole64(x) (x)
+#  define be64toh(x) bswap_64 (x)
+#  define le64toh(x) (x)
+# else
+#  define htobe16(x) (x)
+#  define htole16(x) bswap_16 (x)
+#  define be16toh(x) (x)
+#  define le16toh(x) bswap_16 (x)
+#  define htobe32(x) (x)
+#  define htole32(x) bswap_32 (x)
+#  define be32toh(x) (x)
+#  define le32toh(x) bswap_32 (x)
+#  define htobe64(x) (x)
+#  define htole64(x) bswap_64 (x)
+#  define be64toh(x) (x)
+#  define le64toh(x) bswap_64 (x)
+# endif
+#endif
+
+/*
+ * Byte swab macros (based on linux/byteorder/swab.h)
+ */
+#define swab16(x) bswap_16(x)
+#define swab32(x) bswap_32(x)
+#define swab64(x) bswap_64(x)
+
+#define cpu_to_le16(x) ((uint16_t) htole16(x))
+#define cpu_to_le32(x) ((uint32_t) htole32(x))
+#define cpu_to_le64(x) ((uint64_t) htole64(x))
+
+#define cpu_to_be16(x) ((uint16_t) htobe16(x))
+#define cpu_to_be32(x) ((uint32_t) htobe32(x))
+#define cpu_to_be64(x) ((uint64_t) htobe64(x))
+
+#define le16_to_cpu(x) ((uint16_t) le16toh(x))
+#define le32_to_cpu(x) ((uint32_t) le32toh(x))
+#define le64_to_cpu(x) ((uint64_t) le64toh(x))
+
+#define be16_to_cpu(x) ((uint16_t) be16toh(x))
+#define be32_to_cpu(x) ((uint32_t) be32toh(x))
+#define be64_to_cpu(x) ((uint64_t) be64toh(x))
 
 extern int probe_exfat(struct blkid_probe *probe,
 		      struct blkid_magic *id __BLKID_ATTR((unused)),
@@ -1392,6 +1472,30 @@ static int probe_btrfs(struct blkid_probe *probe,
 	set_uuid(probe->dev, bs->fsid, 0);
 	return 0;
 }
+
+static int probe_f2fs(struct blkid_probe *probe,
+			struct blkid_magic *id,
+			unsigned char *buf)
+{
+	struct f2fs_super_block *sb;
+	uint16_t major, minor;
+	//char label[512];
+
+	sb = (struct f2fs_super_block *)buf;
+	if (!sb)
+		return -1;
+
+	major = le16_to_cpu(sb->major_ver);
+	minor = le16_to_cpu(sb->minor_ver);
+
+	/* For version 1.0 we cannot know the correct sb structure */
+	if (major == 1 && minor == 0)
+		return 0;
+
+	set_uuid(probe->dev, sb->uuid, 0);
+	return 0;
+}
+
 /*
  * Various filesystem magics that we can check for.  Note that kboff and
  * sboff are in kilobytes and bytes respectively.  All magics are in
@@ -1492,6 +1596,7 @@ static struct blkid_magic type_array[] = {
   { "lvm2pv",	 1,  0x018,  8, "LVM2 001",		probe_lvm2 },
   { "lvm2pv",	 1,  0x218,  8, "LVM2 001",		probe_lvm2 },
   { "btrfs",	 64,  0x40,  8, "_BHRfS_M",		probe_btrfs },
+  { "f2fs", F2FS_SB1_KBOFF, F2FS_MAGIC_OFF, 4, F2FS_MAGIC, probe_f2fs },
   {   NULL,	 0,	 0,  0, NULL,			NULL }
 };
 
