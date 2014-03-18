@@ -40,6 +40,10 @@ extern int probe_exfat(struct blkid_probe *probe,
 		      struct blkid_magic *id __BLKID_ATTR((unused)),
 		      unsigned char *buf);
 
+extern int probe_f2fs(struct blkid_probe *probe,
+		      struct blkid_magic *id __BLKID_ATTR((unused)),
+		      unsigned char *buf);
+
 static int figure_label_len(const unsigned char *label, int len)
 {
 	const unsigned char *end = label + len - 1;
@@ -1492,6 +1496,7 @@ static struct blkid_magic type_array[] = {
   { "lvm2pv",	 1,  0x018,  8, "LVM2 001",		probe_lvm2 },
   { "lvm2pv",	 1,  0x218,  8, "LVM2 001",		probe_lvm2 },
   { "btrfs",	 64,  0x40,  8, "_BHRfS_M",		probe_btrfs },
+  { "f2fs",	 1,	 0,  4, "\x10\x20\xF5\xF2",	probe_f2fs },
   {   NULL,	 0,	 0,  0, NULL,			NULL }
 };
 
