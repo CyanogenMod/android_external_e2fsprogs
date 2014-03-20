@@ -19,13 +19,11 @@
 #ifdef HAVE_DLOPEN
 #include <dlfcn.h>
 #endif
+#include <errno.h>
 
-int ss_create_invocation(subsystem_name, version_string, info_ptr,
-			 request_table_ptr, code_ptr)
-	const char *subsystem_name, *version_string;
-	void *info_ptr;
-	ss_request_table *request_table_ptr;
-	int *code_ptr;
+int ss_create_invocation(const char *subsystem_name, const char *version_string,
+			 void *info_ptr, ss_request_table *request_table_ptr,
+			 int *code_ptr)
 {
 	register int sci_idx;
 	register ss_data *new_table;
@@ -45,6 +43,10 @@ int ss_create_invocation(subsystem_name, version_string, info_ptr,
 		;
 	table = (ss_data **) realloc((char *)table,
 				     ((unsigned)sci_idx+2)*size);
+	if (table == NULL) {
+		*code_ptr = errno;
+		return 0;
+	}
 	table[sci_idx+1] = (ss_data *) NULL;
 	table[sci_idx] = new_table;
 
@@ -84,8 +86,7 @@ int ss_create_invocation(subsystem_name, version_string, info_ptr,
 }
 
 void
-ss_delete_invocation(sci_idx)
-	int sci_idx;
+ss_delete_invocation(int sci_idx)
 {
 	register ss_data *t;
 	int ignored_code;

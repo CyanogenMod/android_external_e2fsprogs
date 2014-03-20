@@ -62,7 +62,15 @@ static void setup_tdb(e2fsck_t ctx, ext2_ino_t num_dirs)
 	uuid_unparse(ctx->fs->super->s_uuid, uuid);
 	sprintf(db->tdb_fn, "%s/%s-dirinfo-XXXXXX", tdb_dir, uuid);
 	fd = mkstemp(db->tdb_fn);
-	db->tdb = tdb_open(db->tdb_fn, 0, TDB_CLEAR_IF_FIRST,
+	if (fd < 0) {
+		db->tdb = NULL;
+		return;
+	}
+
+	if (num_dirs < 99991)
+		num_dirs = 99991; /* largest 5 digit prime */
+
+	db->tdb = tdb_open(db->tdb_fn, num_dirs, TDB_NOLOCK | TDB_NOSYNC,
 			   O_RDWR | O_CREAT | O_TRUNC, 0600);
 	close(fd);
 }
@@ -311,14 +319,13 @@ int e2fsck_get_num_dirinfo(e2fsck_t ctx)
 	return ctx->dir_info ? ctx->dir_info->count : 0;
 }
 
-extern struct dir_info_iter *e2fsck_dir_info_iter_begin(e2fsck_t ctx)
+struct dir_info_iter *e2fsck_dir_info_iter_begin(e2fsck_t ctx)
 {
 	struct dir_info_iter *iter;
 	struct dir_info_db *db = ctx->dir_info;
 
 	iter = e2fsck_allocate_memory(ctx, sizeof(struct dir_info_iter),
 				      "dir_info iterator");
-	memset(iter, 0, sizeof(iter));
 
 	if (db->tdb)
 		iter->tdb_iter = tdb_firstkey(db->tdb);
@@ -326,8 +333,8 @@ extern struct dir_info_iter *e2fsck_dir_info_iter_begin(e2fsck_t ctx)
 	return iter;
 }
 
-extern void e2fsck_dir_info_iter_end(e2fsck_t ctx EXT2FS_ATTR((unused)),
-				     struct dir_info_iter *iter)
+void e2fsck_dir_info_iter_end(e2fsck_t ctx EXT2FS_ATTR((unused)),
+			      struct dir_info_iter *iter)
 {
 	free(iter->tdb_iter.dptr);
 	ext2fs_free_mem(&iter);

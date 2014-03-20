@@ -61,6 +61,14 @@
 #define P_(singular, plural, n) ((n) == 1 ? (singular) : (plural))
 #endif
 
+#ifdef __GNUC__
+#define E2FSCK_ATTR(x) __attribute__(x)
+#else
+#define E2FSCK_ATTR(x)
+#endif
+
+#include "quota/mkquota.h"
+
 /*
  * Exit codes used by fsck-type programs
  */
@@ -111,9 +119,9 @@ struct dx_dir_info {
 
 struct dx_dirblock_info {
 	int		type;
-	blk_t		phys;
+	blk64_t		phys;
 	int		flags;
-	blk_t		parent;
+	blk64_t		parent;
 	ext2_dirhash_t	min_hash;
 	ext2_dirhash_t	max_hash;
 	ext2_dirhash_t	node_min_hash;
@@ -124,6 +132,8 @@ struct dx_dirblock_info {
 #define DX_FLAG_DUP_REF		2
 #define DX_FLAG_FIRST		4
 #define DX_FLAG_LAST		8
+
+#define RESOURCE_TRACK
 
 #ifdef RESOURCE_TRACK
 /*
@@ -156,6 +166,7 @@ struct resource_track {
 #define E2F_OPT_COMPRESS_DIRS	0x0400
 #define E2F_OPT_FRAGCHECK	0x0800
 #define E2F_OPT_JOURNAL_ONLY	0x1000 /* only replay the journal */
+#define E2F_OPT_DISCARD		0x2000
 
 /*
  * E2fsck flags
@@ -209,12 +220,16 @@ struct e2fsck_struct {
 	char *filesystem_name;
 	char *device_name;
 	char *io_options;
+	FILE	*logf;
+	char	*log_fn;
 	int	flags;		/* E2fsck internal flags */
 	int	options;
-	blk_t	use_superblock;	/* sb requested by user */
-	blk_t	superblock;	/* sb used to open fs */
 	int	blocksize;	/* blocksize */
+	blk64_t	use_superblock;	/* sb requested by user */
+	blk64_t	superblock;	/* sb used to open fs */
 	blk64_t	num_blocks;	/* Total number of blocks */
+	blk64_t free_blocks;
+	ino_t	free_inodes;
 	int	mount_flags;
 	blkid_cache blkid;	/* blkid cache */
 
@@ -302,6 +317,10 @@ struct e2fsck_struct {
 	io_channel	journal_io;
 	char	*journal_name;
 
+	/*
+	 * Ext4 quota support
+	 */
+	quota_ctx_t qctx;
 #ifdef RESOURCE_TRACK
 	/*
 	 * For timing purposes
@@ -416,32 +435,37 @@ extern struct dx_dir_info *e2fsck_dx_dir_info_iter(e2fsck_t ctx, int *control);
 /* ea_refcount.c */
 extern errcode_t ea_refcount_create(int size, ext2_refcount_t *ret);
 extern void ea_refcount_free(ext2_refcount_t refcount);
-extern errcode_t ea_refcount_fetch(ext2_refcount_t refcount, blk_t blk,
-				   int *ret);
+extern errcode_t ea_refcount_fetch(ext2_refcount_t refcount, blk64_t blk, int *ret);
 extern errcode_t ea_refcount_increment(ext2_refcount_t refcount,
-				       blk_t blk, int *ret);
+				       blk64_t blk, int *ret);
 extern errcode_t ea_refcount_decrement(ext2_refcount_t refcount,
-				       blk_t blk, int *ret);
+				       blk64_t blk, int *ret);
 extern errcode_t ea_refcount_store(ext2_refcount_t refcount,
-				   blk_t blk, int count);
+				   blk64_t blk, int count);
 extern blk_t ext2fs_get_refcount_size(ext2_refcount_t refcount);
 extern void ea_refcount_intr_begin(ext2_refcount_t refcount);
-extern blk_t ea_refcount_intr_next(ext2_refcount_t refcount, int *ret);
+extern blk64_t ea_refcount_intr_next(ext2_refcount_t refcount, int *ret);
 
 /* ehandler.c */
 extern const char *ehandler_operation(const char *op);
 extern void ehandler_init(io_channel channel);
 
 /* journal.c */
-extern int e2fsck_check_ext3_journal(e2fsck_t ctx);
-extern int e2fsck_run_ext3_journal(e2fsck_t ctx);
+extern errcode_t e2fsck_check_ext3_journal(e2fsck_t ctx);
+extern errcode_t e2fsck_run_ext3_journal(e2fsck_t ctx);
 extern void e2fsck_move_ext3_journal(e2fsck_t ctx);
 extern int e2fsck_fix_ext3_journal_hint(e2fsck_t ctx);
+
+/* logfile.c */
+extern void set_up_logging(e2fsck_t ctx);
+
+/* quota.c */
+extern void e2fsck_hide_quota(e2fsck_t ctx);
 
 /* pass1.c */
 extern void e2fsck_setup_tdb_icount(e2fsck_t ctx, int flags,
 				    ext2_icount_t *ret);
-extern void e2fsck_use_inode_shortcuts(e2fsck_t ctx, int bool);
+extern void e2fsck_use_inode_shortcuts(e2fsck_t ctx, int use_shortcuts);
 extern int e2fsck_pass1_check_device_inode(ext2_filsys fs,
 					   struct ext2_inode *inode);
 extern int e2fsck_pass1_check_symlink(ext2_filsys fs, ext2_ino_t ino,
@@ -472,6 +496,9 @@ extern int region_allocate(region_t region, region_addr_t start, int n);
 errcode_t e2fsck_rehash_dir(e2fsck_t ctx, ext2_ino_t ino);
 void e2fsck_rehash_directories(e2fsck_t ctx);
 
+/* sigcatcher.c */
+void sigcatcher_setup(void);
+
 /* super.c */
 void check_super_block(e2fsck_t ctx);
 int check_backup_super_block(e2fsck_t ctx);
@@ -481,8 +508,12 @@ void check_resize_inode(e2fsck_t ctx);
 extern void *e2fsck_allocate_memory(e2fsck_t ctx, unsigned int size,
 				    const char *description);
 extern int ask(e2fsck_t ctx, const char * string, int def);
-extern int ask_yn(const char * string, int def);
+extern int ask_yn(e2fsck_t ctx, const char * string, int def);
 extern void fatal_error(e2fsck_t ctx, const char * fmt_string);
+extern void log_out(e2fsck_t ctx, const char *fmt, ...)
+	E2FSCK_ATTR((format(printf, 2, 3)));
+extern void log_err(e2fsck_t ctx, const char *fmt, ...)
+	E2FSCK_ATTR((format(printf, 2, 3)));
 extern void e2fsck_read_bitmaps(e2fsck_t ctx);
 extern void e2fsck_write_bitmaps(e2fsck_t ctx);
 extern void preenhalt(e2fsck_t ctx);
@@ -516,10 +547,32 @@ extern void e2fsck_write_inode_full(e2fsck_t ctx, unsigned long ino,
 #ifdef MTRACE
 extern void mtrace_print(char *mesg);
 #endif
-extern blk_t get_backup_sb(e2fsck_t ctx, ext2_filsys fs,
+extern blk64_t get_backup_sb(e2fsck_t ctx, ext2_filsys fs,
 			   const char *name, io_manager manager);
 extern int ext2_file_type(unsigned int mode);
 extern int write_all(int fd, char *buf, size_t count);
+void dump_mmp_msg(struct mmp_struct *mmp, const char *msg);
+errcode_t e2fsck_mmp_update(ext2_filsys fs);
+
+extern void e2fsck_set_bitmap_type(ext2_filsys fs,
+				   unsigned int default_type,
+				   const char *profile_name,
+				   unsigned int *old_type);
+extern errcode_t e2fsck_allocate_inode_bitmap(ext2_filsys fs,
+					      const char *descr,
+					      int default_type,
+					      const char *profile_name,
+					      ext2fs_inode_bitmap *ret);
+extern errcode_t e2fsck_allocate_block_bitmap(ext2_filsys fs,
+					      const char *descr,
+					      int default_type,
+					      const char *profile_name,
+					      ext2fs_block_bitmap *ret);
+extern errcode_t e2fsck_allocate_subcluster_bitmap(ext2_filsys fs,
+						   const char *descr,
+						   int default_type,
+						   const char *profile_name,
+						   ext2fs_block_bitmap *ret);
 
 /* unix.c */
 extern void e2fsck_clear_progbar(e2fsck_t ctx);

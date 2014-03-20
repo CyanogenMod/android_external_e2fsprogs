@@ -23,6 +23,7 @@
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
+#include <time.h>
 
 #include "et/com_err.h"
 #include "e2p/e2p.h"
@@ -79,15 +80,9 @@ void proceed_question(void)
 void check_plausibility(const char *device)
 {
 	int val;
-#ifdef HAVE_OPEN64
-	struct stat64 s;
+	ext2fs_struct_stat s;
 
-	val = stat64(device, &s);
-#else
-	struct stat s;
-
-	val = stat(device, &s);
-#endif
+	val = ext2fs_stat(device, &s);
 
 	if(val == -1) {
 		fprintf(stderr, _("Could not stat %s --- %s\n"),
@@ -154,7 +149,7 @@ void check_mount(const char *device, int force, const char *type)
 	}
 	if (mount_flags & EXT2_MF_MOUNTED) {
 		fprintf(stderr, _("%s is mounted; "), device);
-		if (force > 2) {
+		if (force >= 2) {
 			fputs(_("mke2fs forced anyway.  Hope /etc/mtab is "
 				"incorrect.\n"), stderr);
 			return;
@@ -166,7 +161,7 @@ void check_mount(const char *device, int force, const char *type)
 	if (mount_flags & EXT2_MF_BUSY) {
 		fprintf(stderr, _("%s is apparently in use by the system; "),
 			device);
-		if (force > 2) {
+		if (force >= 2) {
 			fputs(_("mke2fs forced anyway.\n"), stderr);
 			return;
 		}
@@ -257,7 +252,7 @@ unsigned int figure_journal_size(int size, ext2_filsys fs)
 {
 	int j_blocks;
 
-	j_blocks = ext2fs_default_journal_size(fs->super->s_blocks_count);
+	j_blocks = ext2fs_default_journal_size(ext2fs_blocks_count(fs->super));
 	if (j_blocks < 0) {
 		fputs(_("\nFilesystem too small for a journal\n"), stderr);
 		return 0;
@@ -273,7 +268,7 @@ unsigned int figure_journal_size(int size, ext2_filsys fs)
 				j_blocks);
 			exit(1);
 		}
-		if ((unsigned) j_blocks > fs->super->s_free_blocks_count / 2) {
+		if ((unsigned) j_blocks > ext2fs_free_blocks_count(fs->super) / 2) {
 			fputs(_("\nJournal size too big for filesystem.\n"),
 			      stderr);
 			exit(1);
@@ -282,12 +277,28 @@ unsigned int figure_journal_size(int size, ext2_filsys fs)
 	return j_blocks;
 }
 
-void print_check_message(ext2_filsys fs)
+void print_check_message(int mnt, unsigned int check)
 {
+	if (mnt < 0)
+		mnt = 0;
+	if (!mnt && !check)
+		return;
 	printf(_("This filesystem will be automatically "
 		 "checked every %d mounts or\n"
 		 "%g days, whichever comes first.  "
 		 "Use tune2fs -c or -i to override.\n"),
-	       fs->super->s_max_mnt_count,
-	       (double)fs->super->s_checkinterval / (3600 * 24));
+	       mnt, ((double) check) / (3600 * 24));
+}
+
+void dump_mmp_msg(struct mmp_struct *mmp, const char *msg)
+{
+
+	if (msg)
+		printf("MMP check failed: %s\n", msg);
+	if (mmp) {
+		time_t t = mmp->mmp_time;
+
+		printf("MMP error info: last update: %s node: %s device: %s\n",
+		       ctime(&t), mmp->mmp_nodename, mmp->mmp_bdevname);
+	}
 }

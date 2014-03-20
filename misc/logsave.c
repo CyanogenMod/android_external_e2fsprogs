@@ -31,17 +31,17 @@ extern char *optarg;
 extern int optind;
 #endif
 
-int	outfd = -1;
-int	outbufsize = 0;
-void	*outbuf = 0;
-int	verbose = 0;
-int	do_skip = 0;
-int	skip_mode = 0;
-pid_t	child_pid = -1;
+static int	outfd = -1;
+static int	outbufsize = 0;
+static void	*outbuf = 0;
+static int	verbose = 0;
+static int	do_skip = 0;
+static int	skip_mode = 0;
+static pid_t	child_pid = -1;
 
 static void usage(char *progname)
 {
-	printf("Usage: %s [-v] [-d dir] logfile program\n", progname);
+	printf("Usage: %s [-asv] logfile program\n", progname);
 	exit(1);
 }
 
@@ -189,6 +189,7 @@ static int run_program(char **argv)
 		dup2(fds[1],1);		/* fds[1] replaces stdout */
 		dup2(fds[1],2);  	/* fds[1] replaces stderr */
 		close(fds[0]);	/* don't need this here */
+		close(fds[1]);
 
 		execvp(argv[0], argv);
 		perror(argv[0]);
@@ -325,7 +326,8 @@ int main(int argc, char **argv)
 		write_all(outfd, outbuf, outbufsize);
 		free(outbuf);
 	}
-	close(outfd);
+	if (outfd >= 0)
+		close(outfd);
 
 	exit(rc);
 }

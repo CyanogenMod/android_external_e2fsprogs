@@ -65,7 +65,7 @@ int e2p_string2mntopt(char *string, unsigned int *mask)
 			return 0;
 		}
 	}
-	if (strncasecmp(string, "MNTOPT_", 8))
+	if (strncasecmp(string, "MNTOPT_", 7))
 		return 1;
 
 	if (string[8] == 0)
@@ -122,6 +122,7 @@ int e2p_edit_mntopts(const char *str, __u32 *mntopts, __u32 ok)
 		case '-':
 		case '^':
 			neg++;
+			/* fallthrough */
 		case '+':
 			cp++;
 			break;

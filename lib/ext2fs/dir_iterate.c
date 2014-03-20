@@ -122,7 +122,7 @@ errcode_t ext2fs_dir_iterate2(ext2_filsys fs,
 	ctx.func = func;
 	ctx.priv_data = priv_data;
 	ctx.errcode = 0;
-	retval = ext2fs_block_iterate2(fs, dir, BLOCK_FLAG_READ_ONLY, 0,
+	retval = ext2fs_block_iterate3(fs, dir, BLOCK_FLAG_READ_ONLY, 0,
 				       ext2fs_process_dir_block, &ctx);
 	if (!block_buf)
 		ext2fs_free_mem(&ctx.buf);
@@ -150,16 +150,16 @@ static int xlate_func(ext2_ino_t dir EXT2FS_ATTR((unused)),
 	return (*xl->func)(dirent, offset, blocksize, buf, xl->real_private);
 }
 
-extern errcode_t ext2fs_dir_iterate(ext2_filsys fs,
-			      ext2_ino_t dir,
-			      int flags,
-			      char *block_buf,
-			      int (*func)(struct ext2_dir_entry *dirent,
-					  int	offset,
-					  int	blocksize,
-					  char	*buf,
-					  void	*priv_data),
-			      void *priv_data)
+errcode_t ext2fs_dir_iterate(ext2_filsys fs,
+			     ext2_ino_t dir,
+			     int flags,
+			     char *block_buf,
+			     int (*func)(struct ext2_dir_entry *dirent,
+					 int	offset,
+					 int	blocksize,
+					 char	*buf,
+					 void	*priv_data),
+			     void *priv_data)
 {
 	struct xlate xl;
 
@@ -176,9 +176,9 @@ extern errcode_t ext2fs_dir_iterate(ext2_filsys fs,
  * ext2fs_dir_iterate() and ext2fs_dblist_dir_iterate()
  */
 int ext2fs_process_dir_block(ext2_filsys fs,
-			     blk_t	*blocknr,
+			     blk64_t	*blocknr,
 			     e2_blkcnt_t blockcnt,
-			     blk_t	ref_block EXT2FS_ATTR((unused)),
+			     blk64_t	ref_block EXT2FS_ATTR((unused)),
 			     int	ref_offset EXT2FS_ATTR((unused)),
 			     void	*priv_data)
 {
@@ -197,7 +197,7 @@ int ext2fs_process_dir_block(ext2_filsys fs,
 
 	entry = blockcnt ? DIRENT_OTHER_FILE : DIRENT_DOT_FILE;
 
-	ctx->errcode = ext2fs_read_dir_block(fs, *blocknr, ctx->buf);
+	ctx->errcode = ext2fs_read_dir_block3(fs, *blocknr, ctx->buf, 0);
 	if (ctx->errcode)
 		return BLOCK_ABORT;
 
@@ -258,7 +258,8 @@ next:
 	}
 
 	if (changed) {
-		ctx->errcode = ext2fs_write_dir_block(fs, *blocknr, ctx->buf);
+		ctx->errcode = ext2fs_write_dir_block3(fs, *blocknr, ctx->buf,
+						       0);
 		if (ctx->errcode)
 			return BLOCK_ABORT;
 	}

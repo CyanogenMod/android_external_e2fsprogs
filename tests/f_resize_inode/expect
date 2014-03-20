@@ -14,8 +14,9 @@ Maximum filesystem blocks=8421376
 Superblock backups stored on blocks: 
 	1025, 3073, 5121, 7169, 9217
 
-Writing inode tables:  0/16 1/16 2/16 3/16 4/16 5/16 6/16 7/16 8/16 9/1610/1611/1612/1613/1614/1615/16done                            
-Writing superblocks and filesystem accounting information: done
+Allocating group tables:      done                            
+Writing inode tables:      done                            
+Writing superblocks and filesystem accounting information:      done
 
 Pass 1: Checking inodes, blocks, and sizes
 Pass 2: Checking directory structure
@@ -26,7 +27,7 @@ test_filesys: 11/4096 files (0.0% non-contiguous), 2107/16384 blocks
 Exit status is 0
 -----------------------------------------------
  
-debugfs -R ''set_inode_field <7> block[2] 42'' -w ./test.img
+debugfs -R ''set_inode_field <7> block[2] 42'' -w test.img
 Exit status is 0
 Resize inode not valid.  Recreate? yes
 
@@ -54,7 +55,7 @@ test_filesys: 11/4096 files (0.0% non-contiguous), 2107/16384 blocks
 Exit status is 0
 -----------------------------------------------
  
-debugfs -R ''clri <7>'' -w ./test.img
+debugfs -R ''clri <7>'' -w test.img
 Exit status is 0
 Resize inode not valid.  Recreate? yes
 
@@ -82,7 +83,7 @@ test_filesys: 11/4096 files (0.0% non-contiguous), 2107/16384 blocks
 Exit status is 0
 -----------------------------------------------
  
-debugfs -R ''set_inode_field <7> bmap[524] 57'' -w ./test.img
+debugfs -R ''set_inode_field <7> bmap[524] 57'' -w test.img
 Exit status is 0
 Resize inode not valid.  Recreate? yes
 
@@ -110,8 +111,9 @@ test_filesys: 11/4096 files (0.0% non-contiguous), 2107/16384 blocks
 Exit status is 0
 -----------------------------------------------
  
-debugfs -R ''set_super_value reserved_gdt_blocks 15679'' -w ./test.img
+debugfs -R ''set_super_value reserved_gdt_blocks 15679'' -w test.img
 Exit status is 0
+ext2fs_check_desc: Corrupt group descriptor: bad block for block bitmap
 ../e2fsck/e2fsck: Group descriptors look bad... trying backup blocks...
 Pass 1: Checking inodes, blocks, and sizes
 Pass 2: Checking directory structure
@@ -124,7 +126,7 @@ test_filesys: 11/4096 files (0.0% non-contiguous), 2107/16384 blocks
 Exit status is 1
 -----------------------------------------------
  
-debugfs -R ''set_super_value reserved_gdt_blocks 32'' -w ./test.img
+debugfs -R ''set_super_value reserved_gdt_blocks 32'' -w test.img
 Exit status is 0
 Pass 1: Checking inodes, blocks, and sizes
 Pass 2: Checking directory structure
