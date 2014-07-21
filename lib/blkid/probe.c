@@ -1492,6 +1492,7 @@ static struct blkid_magic type_array[] = {
   { "lvm2pv",	 1,  0x018,  8, "LVM2 001",		probe_lvm2 },
   { "lvm2pv",	 1,  0x218,  8, "LVM2 001",		probe_lvm2 },
   { "btrfs",	 64,  0x40,  8, "_BHRfS_M",		probe_btrfs },
+  { "f2fs",	 1,	 0,  8, "F2F52010",		0},
   {   NULL,	 0,	 0,  0, NULL,			NULL }
 };
 
