@@ -377,7 +377,7 @@ blkid_src_files := \
 blkid_c_includes := \
     external/e2fsprogs/lib
 
-lsattr_cflags := -O2 -g -W -Wall \
+blkid_cflags := -O2 -g -W -Wall \
     -DHAVE_UNISTD_H \
     -DHAVE_ERRNO_H \
     -DHAVE_NETINET_IN_H \
@@ -403,7 +403,8 @@ lsattr_cflags := -O2 -g -W -Wall \
     -DHAVE_GETOPT_H \
     -DHAVE_SYS_TIME_H \
     -DHAVE_SYS_PARAM_H \
-    -DHAVE_SYSCONF
+    -DHAVE_SYSCONF \
+    -DHAVE_TERMIO_H
 
 blkid_shared_libraries := \
     libext2fs \
