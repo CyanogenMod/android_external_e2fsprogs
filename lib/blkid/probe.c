@@ -36,6 +36,14 @@
 #include "uuid/uuid.h"
 #include "probe.h"
 
+extern int probe_exfat(struct blkid_probe *probe,
+		      struct blkid_magic *id __BLKID_ATTR((unused)),
+		      unsigned char *buf);
+
+extern int probe_f2fs(struct blkid_probe *probe,
+		      struct blkid_magic *id __BLKID_ATTR((unused)),
+		      unsigned char *buf);
+
 static int figure_label_len(const unsigned char *label, int len)
 {
 	const unsigned char *end = label + len - 1;
@@ -85,6 +93,11 @@ static unsigned char *get_buffer(struct blkid_probe *pr,
 	}
 }
 
+unsigned char *blkid_probe_get_buffer(struct blkid_probe *pr,
+			  blkid_loff_t off, size_t len)
+{
+	return get_buffer(pr, off, len);
+}
 
 /*
  * This is a special case code to check for an MDRAID device.  We do
@@ -1395,6 +1408,7 @@ static struct blkid_magic type_array[] = {
 /*  type     kboff   sboff len  magic			probe */
   { "oracleasm", 0,	32,  8, "ORCLDISK",		probe_oracleasm },
   { "ntfs",	 0,	 3,  8, "NTFS    ",		probe_ntfs },
+  { "exfat",	 0,	 3,  8, "EXFAT   ",		probe_exfat },
   { "jbd",	 1,   0x38,  2, "\123\357",		probe_jbd },
   { "ext4dev",	 1,   0x38,  2, "\123\357",		probe_ext4dev },
   { "ext4",	 1,   0x38,  2, "\123\357",		probe_ext4 },
@@ -1485,6 +1499,7 @@ static struct blkid_magic type_array[] = {
   { "lvm2pv",	 1,  0x018,  8, "LVM2 001",		probe_lvm2 },
   { "lvm2pv",	 1,  0x218,  8, "LVM2 001",		probe_lvm2 },
   { "btrfs",	 64,  0x40,  8, "_BHRfS_M",		probe_btrfs },
+  { "f2fs",	 1,	 0,  4, "\x10\x20\xF5\xF2",	probe_f2fs },
   {   NULL,	 0,	 0,  0, NULL,			NULL }
 };
 
