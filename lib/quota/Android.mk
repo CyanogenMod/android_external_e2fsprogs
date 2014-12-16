@@ -43,7 +43,6 @@ LOCAL_SRC_FILES := $(libext2_quota_src_files)
 LOCAL_C_INCLUDES := $(libext2_quota_c_includes)
 LOCAL_CFLAGS := $(libext2_quota_cflags)
 LOCAL_SYSTEM_SHARED_LIBRARIES := libc $(libext2_quota_shared_libraries)
-LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libext2_quota
 LOCAL_MODULE_TAGS := optional
 
