@@ -52,7 +52,6 @@ LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_SYSTEM_SHARED_LIBRARIES := $(libext2_uuid_system_shared_libraries)
 LOCAL_MODULE := libext2_uuid
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -75,7 +74,6 @@ LOCAL_CFLAGS := $(libext2_uuid_cflags)
 LOCAL_STATIC_LIBRARIES := libc
 LOCAL_MODULE := libext2_uuid_static
 LOCAL_MODULE_TAGS := optional
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_STATIC_LIBRARY)
 
