@@ -16,7 +16,7 @@
 typedef __u8  uint8_t;
 typedef __u16 uint16_t;
 typedef __u32 uint32_t;
-typedef __u64 uint64_t;
+typedef __uint64_t uint64_t;
 
 typedef struct blkid_probe* blkid_probe;
 
@@ -78,6 +78,9 @@ static blkid_loff_t cluster_to_offset(const struct exfat_super_block *sb,
 {
 	return block_to_offset(sb, cluster_to_block(sb, cluster));
 }
+
+extern unsigned char *blkid_probe_get_buffer(struct blkid_probe *pr,
+                          blkid_loff_t off, size_t len);
 
 static uint32_t next_cluster(blkid_probe pr,
 		const struct exfat_super_block *sb, uint32_t cluster)
