@@ -1877,7 +1877,11 @@ static int tune2fs_setup_tdb(const char *name, io_manager *io_ptr)
 	return retval;
 }
 
+#ifndef BUILD_AS_LIB
 int main(int argc, char **argv)
+#else
+int tune2fs_main(int argc, char **argv)
+#endif  /* BUILD_AS_LIB */
 {
 	errcode_t retval;
 	ext2_filsys fs;
@@ -2260,10 +2264,11 @@ retry_open:
 	remove_error_table(&et_ext2_error_table);
 
 closefs:
-	if (rc) {
+if (rc) {
 		ext2fs_mmp_stop(fs);
+#ifndef BUILD_AS_LIB
 		exit(1);
+#endif
 	}
-
 	return (ext2fs_close(fs) ? 1 : 0);
 }
