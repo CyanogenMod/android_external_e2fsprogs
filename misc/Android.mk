@@ -52,6 +52,15 @@ mke2fs_shared_libraries := \
 	libext2_com_err \
 	libext2_e2p
 
+mke2fs_static_libraries := \
+	libext2fs \
+	libext2_blkid \
+	libext2_uuid_static \
+	libext2_profile \
+	libext2_quota \
+	libext2_com_err \
+	libext2_e2p
+
 mke2fs_system_shared_libraries := libc
 
 include $(CLEAR_VARS)
@@ -70,7 +79,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(mke2fs_src_files)
 LOCAL_C_INCLUDES := $(mke2fs_c_includes)
 LOCAL_CFLAGS := $(mke2fs_cflags) $(mke2fs_cflags_linux)
-LOCAL_STATIC_LIBRARIES := $(mke2fs_shared_libraries)
+LOCAL_STATIC_LIBRARIES := $(mke2fs_static_libraries)
 LOCAL_STATIC_LIBRARIES += $(mke2fs_system_shared_libraries) libext2fs
 LOCAL_MODULE := recovery_mke2fs
 LOCAL_MODULE_TAGS := eng
@@ -231,7 +240,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(tune2fs_src_files)
 LOCAL_C_INCLUDES := $(tune2fs_c_includes)
 LOCAL_CFLAGS := $(tune2fs_cflags)
-LOCAL_STATIC_LIBRARIES := $(tune2fs_shared_libraries) $(tune2fs_system_shared_libraries) libext2fs
+LOCAL_STATIC_LIBRARIES := $(tune2fs_static_libraries) $(tune2fs_system_shared_libraries) libext2fs
 LOCAL_MODULE := recovery_tune2fs
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
