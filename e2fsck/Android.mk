@@ -112,7 +112,7 @@ e2fsck_src_files :=  \
 e2fsck_shared_libraries := \
 	libext2fs \
 	libext2_blkid \
-	libext2_uuid \
+	libext2_uuid_static \
 	libext2_profile \
 	libext2_quota \
 	libext2_com_err \
