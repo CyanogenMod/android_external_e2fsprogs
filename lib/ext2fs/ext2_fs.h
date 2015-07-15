@@ -288,7 +288,8 @@ struct ext2_dx_countlimit {
 #define EXT2_DIRTY_FL			0x00000100
 #define EXT2_COMPRBLK_FL		0x00000200 /* One or more compressed clusters */
 #define EXT2_NOCOMPR_FL			0x00000400 /* Access raw compressed data */
-#define EXT2_ECOMPR_FL			0x00000800 /* Compression error */
+	/* nb: was previously EXT2_ECOMPR_FL */
+#define EXT4_ENCRYPT_FL			0x00000800 /* encrypted inode */
 /* End compression flags --- maybe not all used */
 #define EXT2_BTREE_FL			0x00001000 /* btree format dir */
 #define EXT2_INDEX_FL			0x00001000 /* hash-indexed directory */
@@ -535,6 +536,44 @@ struct ext2_inode_large {
 #define ext4_offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #endif
 
+/* Encryption algorithms, key size and key reference len */
+#define EXT4_ENCRYPTION_MODE_INVALID		0
+#define EXT4_ENCRYPTION_MODE_AES_256_XTS	1
+#define EXT4_ENCRYPTION_MODE_AES_256_GCM	2
+#define EXT4_ENCRYPTION_MODE_AES_256_CBC	3
+#define EXT4_ENCRYPTION_MODE_AES_256_CTS	4
+
+#define EXT4_AES_256_XTS_KEY_SIZE		64
+#define EXT4_AES_256_GCM_KEY_SIZE		32
+#define EXT4_AES_256_CBC_KEY_SIZE		32
+#define EXT4_AES_256_CTS_KEY_SIZE		32
+#define EXT4_MAX_KEY_SIZE			64
+
+#define EXT4_KEY_DESCRIPTOR_SIZE		8
+
+/* Password derivation constants */
+#define EXT4_MAX_PASSPHRASE_SIZE		1024
+#define EXT4_MAX_SALT_SIZE			256
+#define EXT4_PBKDF2_ITERATIONS			0xFFFF
+
+/*
+ * Policy provided via an ioctl on the topmost directory. This
+ * structure is also in the kernel.
+ */
+struct ext4_encryption_policy {
+  char version;
+  char contents_encryption_mode;
+  char filenames_encryption_mode;
+  char flags;
+  char master_key_descriptor[EXT4_KEY_DESCRIPTOR_SIZE];
+} __attribute__((__packed__));
+
+struct ext4_encryption_key {
+        __u32 mode;
+        char raw[EXT4_MAX_KEY_SIZE];
+        __u32 size;
+} __attribute__((__packed__));
+
 /*
  * Structure of the super block
  */
@@ -620,8 +659,9 @@ struct ext2_super_block {
 	__u64   s_mmp_block;            /* Block for multi-mount protection */
 	__u32   s_raid_stripe_width;    /* blocks on all data disks (N*stride)*/
 	__u8	s_log_groups_per_flex;	/* FLEX_BG group size */
-	__u8    s_reserved_char_pad;
-	__u16	s_reserved_pad;		/* Padding to next 32bits */
+	__u8    s_checksum_type;	/* metadata checksum algorithm */
+	__u8	s_encryption_level;	/* versioning level for encryption */
+	__u8	s_reserved_pad;		/* Padding to next 32bits */
 	__u64	s_kbytes_written;	/* nr of lifetime kilobytes written */
 	__u32	s_snapshot_inum;	/* Inode number of active snapshot */
 	__u32	s_snapshot_id;		/* sequential ID of active snapshot */
@@ -645,7 +685,11 @@ struct ext2_super_block {
 	__u32	s_usr_quota_inum;	/* inode number of user quota file */
 	__u32	s_grp_quota_inum;	/* inode number of group quota file */
 	__u32	s_overhead_blocks;	/* overhead blocks/clusters in fs */
-	__u32   s_reserved[108];        /* Padding to the end of the block */
+	__u32	s_backup_bgs[2];	/* If sparse_super2 enabled */
+	__u8	s_encrypt_algos[4];	/* Encryption algorithms in use  */
+	__u8	s_encrypt_pw_salt[16];	/* Salt used for string2key algorithm */
+	__u32	s_lpf_ino;		/* Location of the lost+found inode */
+	__u32   s_reserved[100];        /* Padding to the end of the block */
 	__u32	s_checksum;		/* crc32c(superblock) */
 };
 
@@ -725,6 +769,7 @@ struct ext2_super_block {
 /* 0x2000 was EXT4_FEATURE_INCOMPAT_BG_USE_META_CSUM but this was never used */
 #define EXT4_FEATURE_INCOMPAT_LARGEDIR		0x4000 /* >2GB or 3-lvl htree */
 #define EXT4_FEATURE_INCOMPAT_INLINEDATA	0x8000 /* data in inode */
+#define EXT4_FEATURE_INCOMPAT_ENCRYPT		0x10000
 
 #define EXT2_FEATURE_COMPAT_SUPP	0
 #define EXT2_FEATURE_INCOMPAT_SUPP    (EXT2_FEATURE_INCOMPAT_FILETYPE| \
