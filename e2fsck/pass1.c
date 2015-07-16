@@ -67,6 +67,7 @@ static void mark_table_blocks(e2fsck_t ctx);
 static void alloc_bb_map(e2fsck_t ctx);
 static void alloc_imagic_map(e2fsck_t ctx);
 static void mark_inode_bad(e2fsck_t ctx, ino_t ino);
+static void add_encrypted_dir(e2fsck_t ctx, ino_t ino);
 static void handle_fs_bad_blocks(e2fsck_t ctx);
 static void process_inodes(e2fsck_t ctx, char *block_buf);
 static EXT2_QSORT_TYPE process_inode_cmp(const void *a, const void *b);
@@ -216,7 +217,11 @@ int e2fsck_pass1_check_symlink(ext2_filsys fs, ext2_ino_t ino,
 		if (io_channel_read_blk64(fs->io, inode->i_block[0], 1, buf))
 			return 0;
 
-		len = strnlen(buf, fs->blocksize);
+		if (inode->i_flags & EXT4_ENCRYPT_FL) {
+			len = ext2fs_le32_to_cpu(*((__u32 *)buf)) + 4;
+		} else {
+			len = strnlen(buf, fs->blocksize);
+		}
 		if (len == fs->blocksize)
 			return 0;
 	} else {
@@ -228,7 +233,8 @@ int e2fsck_pass1_check_symlink(ext2_filsys fs, ext2_ino_t ino,
 			return 0;
 	}
 	if (len != inode->i_size)
-		return 0;
+		if ((inode->i_flags & EXT4_ENCRYPT_FL) == 0)
+			return 0;
 	return 1;
 }
 
@@ -1089,6 +1095,8 @@ void e2fsck_pass1(e2fsck_t ctx)
 			ext2fs_mark_inode_bitmap2(ctx->inode_dir_map, ino);
 			e2fsck_add_dir_info(ctx, ino, 0);
 			ctx->fs_directory_count++;
+			if (inode->i_flags & EXT4_ENCRYPT_FL)
+				add_encrypted_dir(ctx, ino);
 		} else if (LINUX_S_ISREG (inode->i_mode)) {
 			ext2fs_mark_inode_bitmap2(ctx->inode_reg_map, ino);
 			ctx->fs_regular_count++;
@@ -1355,6 +1363,23 @@ static void mark_inode_bad(e2fsck_t ctx, ino_t ino)
 	ext2fs_mark_inode_bitmap2(ctx->inode_bad_map, ino);
 }
 
+static void add_encrypted_dir(e2fsck_t ctx, ino_t ino)
+{
+	struct		problem_context pctx;
+
+	if (!ctx->encrypted_dirs) {
+		pctx.errcode = ext2fs_u32_list_create(&ctx->encrypted_dirs, 0);
+		if (pctx.errcode)
+			goto error;
+	}
+	pctx.errcode = ext2fs_u32_list_add(ctx->encrypted_dirs, ino);
+	if (pctx.errcode == 0)
+		return;
+error:
+	fix_problem(ctx, PR_1_ALLOCATE_ENCRYPTED_DIRLIST, &pctx);
+	/* Should never get here */
+	ctx->flags |= E2F_FLAG_ABORT;
+}
 
 /*
  * This procedure will allocate the inode "bb" (badblock) map table
