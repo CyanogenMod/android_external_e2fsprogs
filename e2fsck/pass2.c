@@ -261,6 +261,10 @@ void e2fsck_pass2(e2fsck_t ctx)
 		ext2fs_free_inode_bitmap(ctx->inode_reg_map);
 		ctx->inode_reg_map = 0;
 	}
+	if (ctx->encrypted_dirs) {
+		ext2fs_u32_list_free(ctx->encrypted_dirs);
+		ctx->encrypted_dirs = 0;
+	}
 
 	clear_problem_context(&pctx);
 	if (ctx->large_files) {
@@ -308,7 +312,7 @@ static int dict_de_cmp(const void *a, const void *b)
 	if (a_len != b_len)
 		return (a_len - b_len);
 
-	return strncmp(de_a->name, de_b->name, a_len);
+	return memcmp(de_a->name, de_b->name, a_len);
 }
 
 /*
@@ -453,7 +457,6 @@ static int check_dotdot(e2fsck_t ctx,
  */
 static int check_name(e2fsck_t ctx,
 		      struct ext2_dir_entry *dirent,
-		      ext2_ino_t dir_ino EXT2FS_ATTR((unused)),
 		      struct problem_context *pctx)
 {
 	int	i;
@@ -732,6 +735,7 @@ static int check_dir_block(ext2_filsys fs,
 	static dict_t de_dict;
 	struct problem_context	pctx;
 	int	dups_found = 0;
+	int	encrypted = 0;
 	int	ret;
 
 	cd = (struct check_dir_struct *) priv_data;
@@ -839,6 +843,9 @@ static int check_dir_block(ext2_filsys fs,
 	}
 out_htree:
 #endif /* ENABLE_HTREE */
+
+	if (ctx->encrypted_dirs)
+		encrypted = ext2fs_u32_list_test(ctx->encrypted_dirs, ino);
 
 	dict_init(&de_dict, DICTCOUNT_T_MAX, dict_de_cmp);
 	prev = 0;
@@ -1031,7 +1038,7 @@ out_htree:
 			}
 		}
 
-		if (check_name(ctx, dirent, ino, &cd->pctx))
+		if (!encrypted && check_name(ctx, dirent, &cd->pctx))
 			dir_modified++;
 
 		if (check_filetype(ctx, dirent, ino, &cd->pctx))

@@ -625,6 +625,9 @@ struct problem_context {
 /* Couldn't clone file (error) */
 #define PR_1D_CLONE_ERROR	0x013008
 
+/* Error allocating memory for encrypted directory list */
+#define PR_1_ALLOCATE_ENCRYPTED_DIRLIST		0x01007E
+
 /*
  * Pass 2 errors
  */

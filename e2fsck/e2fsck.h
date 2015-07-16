@@ -366,6 +366,7 @@ struct e2fsck_struct {
 	int ext_attr_ver;
 	profile_t	profile;
 	int blocks_per_page;
+	ext2_u32_list encrypted_dirs;
 
 	/*
 	 * For the use of callers of the e2fsck functions; not used by
