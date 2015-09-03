@@ -37,7 +37,7 @@ libext2_profile_cflags := -O2 -g -W -Wall \
 	-DHAVE_LINUX_FD_H \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF \
 	-DDISABLE_BACKTRACE=1
 
@@ -106,7 +106,7 @@ e2fsck_shared_libraries := \
 	libext2_e2p
 e2fsck_system_shared_libraries := libc
 
-e2fsck_c_includes := external/e2fsprogs/lib
+e2fsck_c_includes :=
 
 e2fsck_cflags := -O2 -g -W -Wall -fno-strict-aliasing \
 	-DHAVE_DIRENT_H \
@@ -136,7 +136,7 @@ e2fsck_cflags := -O2 -g -W -Wall -fno-strict-aliasing \
 	-DHAVE_INTPTR_T \
 	-DENABLE_HTREE=1 \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF \
 	-DDISABLE_BACKTRACE=1
 
