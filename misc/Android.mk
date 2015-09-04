@@ -8,7 +8,6 @@ mke2fs_src_files := \
 	default_profile.c
 
 mke2fs_c_includes := \
-	external/e2fsprogs/lib \
 	external/e2fsprogs/e2fsck
 
 mke2fs_cflags := -O2 -g -W -Wall \
@@ -32,7 +31,7 @@ mke2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 mke2fs_cflags_linux := \
@@ -89,7 +88,6 @@ tune2fs_src_files := \
 	util.c
 
 tune2fs_c_includes := \
-	external/e2fsprogs/lib \
 	external/e2fsprogs/e2fsck
 
 tune2fs_cflags := -O2 -g -W -Wall \
@@ -117,7 +115,7 @@ tune2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 tune2fs_cflags += -DNO_CHECK_BB
@@ -198,8 +196,7 @@ include $(CLEAR_VARS)
 badblocks_src_files := \
 	badblocks.c
 
-badblocks_c_includes := \
-	external/e2fsprogs/lib
+badblocks_c_includes :=
 
 badblocks_cflags := -O2 -g -W -Wall \
 	-DHAVE_UNISTD_H \
@@ -226,7 +223,7 @@ badblocks_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 badblocks_shared_libraries := \
@@ -298,7 +295,7 @@ chattr_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 chattr_shared_libraries := \
@@ -367,7 +364,7 @@ lsattr_cflags := -O2 -g -W -Wall \
 	-DHAVE_TYPE_SSIZE_T \
 	-DHAVE_GETOPT_H \
 	-DHAVE_SYS_TIME_H \
-        -DHAVE_SYS_PARAM_H \
+	-DHAVE_SYS_PARAM_H \
 	-DHAVE_SYSCONF
 
 lsattr_shared_libraries := \
@@ -408,8 +405,7 @@ include $(CLEAR_VARS)
 blkid_src_files := \
     blkid.c
 
-blkid_c_includes := \
-    external/e2fsprogs/lib
+blkid_c_includes :=
 
 blkid_cflags := -O2 -g -W -Wall \
     -DHAVE_UNISTD_H \
