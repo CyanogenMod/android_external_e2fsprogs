@@ -16,9 +16,9 @@ libext2fs_src_files := \
 	block.c \
 	bmap.c \
 	check_desc.c \
+	closefs.c \
 	crc16.c \
 	csum.c \
-	closefs.c \
 	dblist.c \
 	dblist_dir.c \
 	dirblock.c \
@@ -48,26 +48,29 @@ libext2fs_src_files := \
 	link.c \
 	llseek.c \
 	lookup.c \
-	mmp.c \
 	mkdir.c \
 	mkjournal.c \
+	mmp.c \
+	namei.c \
 	native.c \
 	newdir.c \
 	openfs.c \
 	progress.c \
 	punch.c \
-	rbtree.c \
+	qcow2.c \
 	read_bb.c \
 	read_bb_file.c \
 	res_gdt.c \
 	rw_bitmaps.c \
 	swapfs.c \
+	symlink.c \
 	tdb.c \
 	undo_io.c \
 	unix_io.c \
 	unlink.c \
 	valid_blk.c \
-	version.c
+	version.c \
+	rbtree.c
 
 # get rid of this?!
 libext2fs_src_files += test_io.c
