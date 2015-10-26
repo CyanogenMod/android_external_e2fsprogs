@@ -1391,6 +1391,11 @@ static struct e2fsck_problem problem_table[] = {
 	  N_("i_file_acl_hi @F %N, @s zero.\n"),
 	  PROMPT_CLEAR, PR_PREEN_OK },
 
+	/* Encrypted directory entry is too short */
+	{ PR_2_BAD_ENCRYPTED_NAME,
+	  N_("Encrypted @E is too short.\n"),
+	  PROMPT_CLEAR, 0 },
+
 	/* Pass 3 errors */
 
 	/* Pass 3: Checking directory connectivity */

@@ -464,17 +464,30 @@ static int check_name(e2fsck_t ctx,
 	int	ret = 0;
 
 	for ( i = 0; i < (dirent->name_len & 0xFF); i++) {
-		if (dirent->name[i] == '/' || dirent->name[i] == '\0') {
-			if (fixup < 0) {
-				fixup = fix_problem(ctx, PR_2_BAD_NAME, pctx);
-			}
-			if (fixup) {
-				dirent->name[i] = '.';
-				ret = 1;
-			}
-		}
+		if (dirent->name[i] != '/' && dirent->name[i] != '\0')
+			continue;
+		if (fixup < 0)
+			fixup = fix_problem(ctx, PR_2_BAD_NAME, pctx);
+		if (fixup == 0)
+			return 0;
+		dirent->name[i] = '.';
+		ret = 1;
 	}
 	return ret;
+}
+
+static int encrypted_check_name(e2fsck_t ctx,
+				struct ext2_dir_entry *dirent,
+				struct problem_context *pctx)
+{
+	if ((dirent->name_len & 0xff) < EXT4_CRYPTO_BLOCK_SIZE) {
+		if (fix_problem(ctx, PR_2_BAD_ENCRYPTED_NAME, pctx)) {
+			dirent->inode = 0;
+			return 1;
+		}
+		ext2fs_unmark_valid(ctx->fs);
+	}
+	return 0;
 }
 
 /*
@@ -1040,6 +1053,12 @@ out_htree:
 
 		if (!encrypted && check_name(ctx, dirent, &cd->pctx))
 			dir_modified++;
+
+		if (encrypted && (dot_state) > 1 &&
+		    encrypted_check_name(ctx, dirent, &cd->pctx)) {
+			dir_modified++;
+			goto next;
+		}
 
 		if (check_filetype(ctx, dirent, ino, &cd->pctx))
 			dir_modified++;

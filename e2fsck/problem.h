@@ -833,6 +833,9 @@ struct problem_context {
 /* i_file_acl_hi should be zero */
 #define PR_2_I_FILE_ACL_HI_ZERO		0x020048
 
+/* Encrypted directory entry is too short */
+#define PR_2_BAD_ENCRYPTED_NAME		0x020050
+
 /*
  * Pass 3 errors
  */
