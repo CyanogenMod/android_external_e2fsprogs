@@ -167,17 +167,11 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(e2fsck_src_files)
 LOCAL_C_INCLUDES := $(e2fsck_c_includes)
-LOCAL_CFLAGS := $(e2fsck_cflags)
+LOCAL_CFLAGS := $(e2fsck_cflags) -Dmain=e2fsck_main
 LOCAL_STATIC_LIBRARIES := $(e2fsck_system_shared_libraries) $(e2fsck_shared_libraries) libext2fs
-LOCAL_MODULE := recovery_e2fsck
-LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
-LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/recovery
-LOCAL_MODULE_STEM := e2fsck
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-LOCAL_PACK_MODULE_RELOCATIONS := false
+LOCAL_MODULE := libe2fsck_static
 LOCAL_MODULE_TAGS := optional
-include $(BUILD_EXECUTABLE)
+include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
