@@ -60,6 +60,16 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(resize2fs_src_files)
 LOCAL_C_INCLUDES := $(resize2fs_c_includes)
+LOCAL_CFLAGS := $(resize2fs_cflags) -Dmain=resize2fs_main
+LOCAL_STATIC_LIBRARIES := $(resize2fs_system_shared_libraries) $(resize2fs_shared_libraries)
+LOCAL_MODULE := libresize2fs_static
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(resize2fs_src_files)
+LOCAL_C_INCLUDES := $(resize2fs_c_includes)
 LOCAL_CFLAGS := $(resize2fs_cflags)
 LOCAL_STATIC_LIBRARIES := $(resize2fs_shared_libraries)
 LOCAL_STATIC_LIBRARIES += $(resize2fs_system_shared_libraries)
