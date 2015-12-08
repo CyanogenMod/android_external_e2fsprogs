@@ -536,6 +536,9 @@ typedef struct ext2_icount *ext2_icount_t;
 	  if ((struct)->magic != (code)) return (code)
 
 
+#define EXT2FS_SHA256_LENGTH 32
+#define EXT2FS_DIGEST_SIZE EXT2FS_SHA256_LENGTH
+
 /*
  * For ext2 compression support
  */
