@@ -70,7 +70,7 @@ LOCAL_CFLAGS := $(libext2_com_err_cflags) $(libext2_com_err_cflags_linux)
 else
 LOCAL_CFLAGS := $(libext2_com_err_cflags)
 endif
-LOCAL_MODULE := libext2_com_err_host
+LOCAL_MODULE := libext2_com_err-host
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_SHARED_LIBRARY)
