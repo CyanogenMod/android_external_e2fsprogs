@@ -79,14 +79,14 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(libext2_blkid_src_files)
-LOCAL_SHARED_LIBRARIES := $(addsuffix _host, $(libext2_blkid_shared_libraries))
+LOCAL_SHARED_LIBRARIES := $(addsuffix -host, $(libext2_blkid_shared_libraries))
 LOCAL_C_INCLUDES := $(libext2_blkid_c_includes)
 ifeq ($(HOST_OS),linux)
 LOCAL_CFLAGS := $(libext2_blkid_cflags) $(libext2_blkid_cflags_linux)
 else
 LOCAL_CFLAGS := $(libext2_blkid_cflags)
 endif
-LOCAL_MODULE := libext2_blkid_host
+LOCAL_MODULE := libext2_blkid-host
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_HOST_SHARED_LIBRARY)
