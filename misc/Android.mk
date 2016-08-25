@@ -7,6 +7,7 @@ mke2fs_src_files := \
 	default_profile.c
 
 mke2fs_c_includes := \
+	external/e2fsprogs/lib/blkid \
 	external/e2fsprogs/e2fsck
 
 mke2fs_cflags := -O2 -g -W -Wall \
@@ -95,7 +96,8 @@ tune2fs_src_files := \
 	tune2fs.c \
 
 tune2fs_c_includes := \
-	external/e2fsprogs/e2fsck
+	external/e2fsprogs/e2fsck \
+	external/e2fsprogs/lib/ext2fs
 
 tune2fs_cflags := -O2 -g -W -Wall \
 	-DHAVE_UNISTD_H \
